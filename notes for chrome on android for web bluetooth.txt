@@ -1,0 +1,16 @@
+
+chrome://flags/#enable-experimental-web-platform-features
+
+
+chrome://flags
+
+
+enable 
+#Experimental Web Platform Features
+
+
+For Linux and earlier versions of Windows, enable the #experimental-web-platform-features flag in chrome://flags
+
+
+chrome://bluetooth-internals
+
