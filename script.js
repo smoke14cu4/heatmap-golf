@@ -411,10 +411,9 @@ function updateCoPGraph() {
 }
 
 
-
+/*
 //this one worked ..most of the time, so it's not bad....
 //update heatmap function before changing to use the heatmap.js internal data store
-
 function updateHeatmapWithHistory() {
     if (!heatmapInstance || dataHistory.length === 0) return;
 
@@ -488,19 +487,19 @@ function updateHeatmapWithHistory() {
   
     //heatmapInstance.setData({ data: [] }); // Clear previous data
   
-    /*
     
-    // Update using addData instead of setData
-    heatmapInstance.configure({
-        min: 0,
-        max: settings.maxValue
-    });
     
-    // Add new data points individually
-    allDataPoints.forEach(point => {
-        heatmapInstance.addData(point);
-    });
-    */
+    //// Update using addData instead of setData
+    //heatmapInstance.configure({
+    //    min: 0,
+     //   max: settings.maxValue
+    //});
+    
+    //// Add new data points individually
+    //allDataPoints.forEach(point => {
+    //    heatmapInstance.addData(point);
+    //});
+    
   
   
     // Update heatmap data
@@ -514,28 +513,28 @@ function updateHeatmapWithHistory() {
     });
   
   
-    /*
-    heatmapInstance.setData({
-        min: minValue,
-        max: maxValue,
-        data: allDataPoints
-    });
-    */
+    
+    //heatmapInstance.setData({
+    //    min: minValue,
+    //    max: maxValue,
+    //    data: allDataPoints
+    //});
+    
   
     
     //neither of these helped the heatmap sometimes not showing under the CoP trace....
     //heatmapInstance.setDataMin(minValue);
     //heatmapInstance.setDataMax(maxValue);
   
-    /*
-      //update suggested by Claude 3.5 using poe.com
-      //introduces a "slight variation" to force updates and also calls .addData instead of .setData
-    heatmapInstance.setData({
-        min: minValue,
-        max: maxValue,
-        data: allDataPoints
-    });
-    */
+    
+    //  //update suggested by Claude 3.5 using poe.com
+    //  //introduces a "slight variation" to force updates and also calls .addData instead of .setData
+    //heatmapInstance.setData({
+    //    min: minValue,
+    //    max: maxValue,
+    //    data: allDataPoints
+    //});
+    
   
 
     // Draw grid and CoP
@@ -629,6 +628,150 @@ function updateHeatmapWithHistory() {
   
   
 }
+
+*/
+
+
+
+
+
+//updated with suggestions from GitHub CoPilot chat to speed up the function:
+function updateHeatmapWithHistory() {
+    if (!heatmapInstance || dataHistory.length === 0) return;
+
+    const now = Date.now();  // timestamp since epoch in ms
+    const maxAge = settings.historyLength * 1000;  // converts historyLength in seconds to milliseconds
+
+    let minValue = Infinity;   // Start with the largest possible value
+    let maxValue = -Infinity;  // Start with the smallest possible value
+
+    const allDataPoints = [];  // Create an array to hold all data points
+
+    // Transform and scale the data points
+    for (const { timestamp, readings } of dataHistory) {
+        const age = now - timestamp;
+        const opacity = Math.max(settings.minOpacity, 1 - (age / maxAge));
+
+        for (const reading of readings) {
+            let x = reading.x;
+            let y = reading.y;
+
+            // Apply inversion if enabled
+            if (settings.invertX) {
+                x = settings.sensorsX - x;
+            }
+            if (!settings.invertY) {
+                y = settings.sensorsY - y;
+            }
+
+            // Scale coordinates to canvas size
+            const canvas = document.getElementById('heatmap');
+            const scaleX = canvas.offsetWidth / settings.sensorsX;
+            const scaleY = canvas.offsetHeight / settings.sensorsY;
+
+            // Scale the value to create more variation in colors
+            const scaledValue = Math.min(settings.maxValue, reading.value);
+            const normalizedValue = (scaledValue / settings.maxValue) * reading.value;
+
+            if (maxValue < reading.value) maxValue = reading.value;
+            if (minValue > reading.value) minValue = reading.value;
+
+            allDataPoints.push({
+                x: x * scaleX,
+                y: y * scaleY,
+                value: reading.value,
+                opacity: opacity
+            });
+        }
+    }
+
+    // Update heatmap data
+    heatmapInstance.setData({
+        min: minValue,
+        max: maxValue,
+        data: allDataPoints
+    });
+
+    // Draw grid and CoP
+    const canvas = document.getElementById('heatmap').querySelector('canvas');
+    const ctx = canvas.getContext('2d');
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 1;
+
+    // Draw vertical grid lines
+    const xStep = canvas.width / settings.sensorsX;
+    for (let i = 0; i <= settings.sensorsX; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * xStep, 0);
+        ctx.lineTo(i * xStep, canvas.height);
+        ctx.stroke();
+    }
+
+    // Draw horizontal grid lines
+    const yStep = canvas.height / settings.sensorsY;
+    for (let i = 0; i <= settings.sensorsY; i++) {
+        ctx.beginPath();
+        ctx.moveTo(0, i * yStep);
+        ctx.lineTo(canvas.width, i * yStep);
+        ctx.stroke();
+    }
+
+    ctx.strokeStyle = 'yellow';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+
+    for (const point of copHistory) {
+        let x = point.x;
+        let y = point.y;
+
+        // Apply inversion if enabled
+        if (settings.invertX) {
+            x = settings.sensorsX - x;
+        }
+        if (!settings.invertY) {
+            y = settings.sensorsY - y;
+        }
+
+        // Scale coordinates to canvas size
+        x = (x * canvas.width) / settings.sensorsX;
+        y = (y * canvas.height) / settings.sensorsY;
+
+        if (copHistory.indexOf(point) === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    }
+
+    ctx.stroke();
+
+    // Draw the current CoP point as a larger dot
+    if (copHistory.length > 0) {
+        const lastPoint = copHistory[copHistory.length - 1];
+        let x = lastPoint.x;
+        let y = lastPoint.y;
+
+        // Apply inversion if enabled
+        if (settings.invertX) {
+            x = settings.sensorsX - x;
+        }
+        if (!settings.invertY) {
+            y = settings.sensorsY - y;
+        }
+
+        // Scale coordinates to canvas size
+        x = (x * canvas.width) / settings.sensorsX;
+        y = (y * canvas.height) / settings.sensorsY;
+
+        ctx.beginPath();
+        ctx.fillStyle = 'yellow';
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+
 
 
 function drawCoP() {
