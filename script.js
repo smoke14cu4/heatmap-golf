@@ -58,13 +58,13 @@ const settings = {
     minOpacity: 0.02,   // Increased to keep points visible longer  
     //maxOpacity: 0.6,   // decreaded 
     //minOpacity: 0,   // decreased tp 0 to try to not show so much history, even when history length set to 0  
-    maxValue: 1500,
+    maxValue: 2000,
     minValue: 200,
     copHistoryLength: 30,
-    matWidth: 48,          // inches
-    matHeight: 24,         // inches
-    sensorsX: 24,          // number of sensors in X direction
-    sensorsY: 12,          // number of sensors in Y direction
+    matWidth: 46,          // inches
+    matHeight: 22,         // inches
+    sensorsX: 23,          // number of sensors in X direction
+    sensorsY: 11,          // number of sensors in Y direction
     invertX: true,        // invert X axis
     invertY: false,         // invert Y axis
     
@@ -2100,6 +2100,8 @@ function updateRawData(readings, cop) {
     }
 }
 
+
+/*
 // Modified connectToDevice function to clear buffer on new connection
 async function connectToDevice(device) {
     try {
@@ -2139,7 +2141,69 @@ async function connectToDevice(device) {
         updateStatus('Connection failed: ' + error);
     }
 }
+*/
 
+
+//changed to automatically connect and also automatically try to reconnect up to 3 times
+async function connectToDevice(device) {
+    const MAX_RETRY_ATTEMPTS = 3;
+    const RETRY_DELAY = 1000; // 1 second delay between retries
+    
+    async function attemptConnection(retryCount = 0) {
+        try {
+            bluetoothDevice = device;
+            dataBuffer = '';
+            
+            updateStatus('Connecting to device...');
+            updateConnectionInfo(`Connecting to device: ${device.name || 'Unnamed Device'} (Attempt ${retryCount + 1})`);
+            
+            // Add disconnect event listener
+            device.addEventListener('gattserverdisconnected', handleDisconnection);
+            
+            const server = await device.gatt.connect();
+            updateConnectionInfo('GATT server connected');
+            
+            // Try Nordic UART first, then Microchip UART
+            let service;
+            try {
+                service = await server.getPrimaryService(NORDIC_UART_SERVICE);
+                updateConnectionInfo('Connected using Nordic UART Service');
+                characteristic = await service.getCharacteristic(NORDIC_UART_TX);
+            } catch {
+                service = await server.getPrimaryService(MICROCHIP_UART_SERVICE);
+                updateConnectionInfo('Connected using Microchip UART Service');
+                characteristic = await service.getCharacteristic(MICROCHIP_UART_TX);
+            }
+
+            characteristic.addEventListener('characteristicvaluechanged', handleData);
+            await characteristic.startNotifications();
+            
+            updateConnectionInfo('Notifications started - ready to receive data');
+            updateStatus('Connected and receiving data');
+            
+            // Reset auto-reconnect state since we successfully connected
+            device.autoReconnectEnabled = true;
+            
+        } catch (error) {
+            console.error('Connection error:', error);
+            updateConnectionInfo(`Connection failed (Attempt ${retryCount + 1}): ${error.message}`, true);
+            
+            if (retryCount < MAX_RETRY_ATTEMPTS) {
+                updateConnectionInfo(`Retrying connection in ${RETRY_DELAY/1000} seconds...`);
+                setTimeout(() => attemptConnection(retryCount + 1), RETRY_DELAY);
+            } else {
+                updateConnectionInfo('Maximum retry attempts reached. Please try scanning again.', true);
+                updateStatus('Connection failed after multiple attempts');
+            }
+        }
+    }
+    
+    // Start the connection attempt
+    await attemptConnection();
+}
+
+
+/*
 // Modified handleDisconnection to clear buffer
 function handleDisconnection(event) {
     updateConnectionInfo('Device disconnected unexpectedly!', true);
@@ -2153,7 +2217,35 @@ function handleDisconnection(event) {
     characteristic = null;
     dataBuffer = ''; // Clear the buffer on disconnection
 }
+*/
 
+
+//changed to automatically connect and also automatically try to reconnect up to 3 times
+function handleDisconnection(event) {
+    const device = event.target;
+    updateConnectionInfo('Device disconnected unexpectedly!', true);
+    updateStatus('Device disconnected');
+    
+    // Clear the device list
+    //document.getElementById('deviceList').innerHTML = '';
+    
+    // Reset variables
+    characteristic = null;
+    dataBuffer = '';
+    
+    // Attempt to reconnect if auto-reconnect is enabled
+    if (device.autoReconnectEnabled) {
+        updateConnectionInfo('Attempting to reconnect...');
+        connectToDevice(device).catch(error => {
+            console.error('Auto-reconnect failed:', error);
+            updateConnectionInfo('Auto-reconnect failed: ' + error.message, true);
+        });
+    }
+}
+
+
+
+/*
 // Scan for devices
 async function scanForDevices() {
     try {
@@ -2183,6 +2275,35 @@ async function scanForDevices() {
         updateStatus('Scanning failed: ' + error);
     }
 }
+*/
+
+
+//changed to automatically connect
+async function scanForDevices() {
+    try {
+        updateStatus('Scanning for devices...');
+        updateConnectionInfo('Starting device scan...');
+        
+        const device = await navigator.bluetooth.requestDevice({
+            filters: [
+                { services: [NORDIC_UART_SERVICE] },
+                { services: [MICROCHIP_UART_SERVICE] }
+            ]
+        });
+
+        updateConnectionInfo(`Device found: ${device.name || 'Unnamed Device'}`);
+
+        // Automatically connect to the device after selection
+        await connectToDevice(device);
+        
+    } catch (error) {
+        console.error('Scanning error:', error);
+        updateConnectionInfo('Scanning failed: ' + error.message, true);
+        updateStatus('Scanning failed: ' + error);
+    }
+}
+
+
 
 // Event listeners
 document.getElementById('scanButton').addEventListener('click', scanForDevices);
