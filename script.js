@@ -148,9 +148,24 @@ window.onload = function() {
   
 };
 
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
 
 function initializeHeatmap(){
     try {
+      
+        adjustContainerDimensions(); // Add this line before creating heatmap instance
+      
         heatmapInstance = h337.create({
             container: document.getElementById('heatmap'),
             radius: settings.radius,
@@ -239,6 +254,7 @@ function initializeControls() {
         checkbox.addEventListener('change', (e) => {
             settings[setting] = e.target.checked;
             if (debug == 1) console.log(`${setting} changed to:`, e.target.checked);
+            adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
             updateHeatmapWithHistory();
             updateCoPGraph();
         });
@@ -277,21 +293,25 @@ function updateSetting(setting, value) {
         case 'maxValue':
             settings.maxValue = value;
             initializeHeatmap();
+            adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
             updateHeatmapWithHistory();
             break;
         case 'minValue':
             settings.minValue = value;
             initializeHeatmap();
+            adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
             updateHeatmapWithHistory();
             break;
         case 'maxOpacity':
             settings.maxOpacity = value;
             initializeHeatmap();
+            adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
             updateHeatmapWithHistory();
             break;
         case 'minOpacity':
             settings.minOpacity = value;
             initializeHeatmap();
+            adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
             updateHeatmapWithHistory();            
             break;
         case 'historyLength':
@@ -301,6 +321,7 @@ function updateSetting(setting, value) {
         case 'copHistoryLength':
             settings.copHistoryLength = value;
             copHistory = copHistory.slice(-value); // Trim CoP history if needed
+            adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
             updateHeatmapWithHistory();
             break;
         case 'matWidth':
@@ -308,12 +329,14 @@ function updateSetting(setting, value) {
         case 'sensorsX':
         case 'sensorsY':
             settings[setting] = parseInt(value);
+            adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
             updateHeatmapWithHistory();
             updateCoPGraph();
             break;
         case 'invertX':
         case 'invertY':
             settings[setting] = value;
+            adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
             updateHeatmapWithHistory();
             updateCoPGraph();
             break;        
@@ -633,8 +656,79 @@ function updateHeatmapWithHistory() {
 
 
 
+//this function was incorporated into the updateHeatmapWithHistory function 
+/*
+function drawCoP() {
+    if (!copHistory.length) return;
+
+    const canvas = document.getElementById('heatmap').querySelector('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    //ctx.save();  //can't tell if these help or not.  commenting the save and restores out seems to maybe help a little on the heatmap problem
+  
+    ctx.strokeStyle = 'yellow';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+
+    copHistory.forEach((point, index) => {
+        let x = point.x;
+        let y = point.y;
+        
+        // Apply inversion if enabled
+        if (settings.invertX) {
+            x = settings.sensorsX - x;
+        }
+        //see above comments for inverting cartesian Y axis in heatmap.js screen coordinate system
+        if (!settings.invertY) {
+            y = settings.sensorsY - y;
+        }
+        
+        // Scale coordinates to canvas size
+        x = (x * canvas.width) / settings.sensorsX;
+        y = (y * canvas.height) / settings.sensorsY;
+
+        if (index === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    });
+
+    ctx.stroke();
+    
+    // Draw the current CoP point as a larger dot
+    if (copHistory.length > 0) {
+        const lastPoint = copHistory[copHistory.length - 1];
+        let x = lastPoint.x;
+        let y = lastPoint.y;
+        
+        // Apply inversion if enabled
+        if (settings.invertX) {
+            x = settings.sensorsX - x;
+        }
+        //see above comments for inverting cartesian Y axis in heatmap.js screen coordinate system
+        if (!settings.invertY) {
+            y = settings.sensorsY - y;
+        }
+        
+        // Scale coordinates to canvas size
+        x = (x * canvas.width) / settings.sensorsX;
+        y = (y * canvas.height) / settings.sensorsY;
+
+        ctx.beginPath();
+        ctx.fillStyle = 'yellow';
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    //ctx.restore();  //can't tell if these help or not.  commenting the save and restores out seems to maybe help a little on the heatmap problem
+  
+}
+*/
 
 
+
+/*
 //updated with suggestions from GitHub CoPilot chat to speed up the function:
 function updateHeatmapWithHistory() {
     if (!heatmapInstance || dataHistory.length === 0) return;
@@ -770,78 +864,398 @@ function updateHeatmapWithHistory() {
         ctx.fill();
     }
 }
+*/
 
 
 
 
-function drawCoP() {
-    if (!copHistory.length) return;
+//updated to help prevent the heatmap not rendering correctly  //creates seperate overlay canvases
+// Create a debounced version of the update function
+const debouncedUpdateHeatmap = debounce((dataHistory, copHistory, settings) => {
+    if (!heatmapInstance || dataHistory.length === 0) return;
 
-    const canvas = document.getElementById('heatmap').querySelector('canvas');
-    const ctx = canvas.getContext('2d');
-    
-    //ctx.save();  //can't tell if these help or not.  commenting the save and restores out seems to maybe help a little on the heatmap problem
+    //const now = Date.now();  // timestamp since epoch in ms
+    //const maxAge = settings.historyLength * 1000;  // converts historyLength in seconds to milliseconds   
   
-    ctx.strokeStyle = 'yellow';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
+    const histLen = settings.historyLength;  //mult by X (* 2) makes scale down more slowly  //divide by X ( / 1.5) makes the opacity scale downwards more quickly for each historical reading
 
-    copHistory.forEach((point, index) => {
-        let x = point.x;
-        let y = point.y;
-        
-        // Apply inversion if enabled
-        if (settings.invertX) {
-            x = settings.sensorsX - x;
-        }
-        //see above comments for inverting cartesian Y axis in heatmap.js screen coordinate system
-        if (!settings.invertY) {
-            y = settings.sensorsY - y;
-        }
-        
-        // Scale coordinates to canvas size
-        x = (x * canvas.width) / settings.sensorsX;
-        y = (y * canvas.height) / settings.sensorsY;
+    let minValue = Infinity;   // Start with the largest possible value
+    let maxValue = -Infinity;  // Start with the smallest possible value
 
-        if (index === 0) {
-            ctx.moveTo(x, y);
-        } else {
-            ctx.lineTo(x, y);
+    // Get canvas dimensions and scaling factors
+    const container = document.getElementById('heatmap-container');
+    const canvas = document.getElementById('heatmap');
+  
+    const scaleX = container.offsetWidth / settings.sensorsX;    
+    const scaleY = container.offsetHeight / settings.sensorsY; 
+  
+    var counter = 0;
+    
+    // Process and scale the data points
+    const allDataPoints = [];
+    for (const { timestamp, readings } of dataHistory) {
+        //const age = now - timestamp;
+        //const opacity = Math.max(settings.minOpacity, 1 - (age / maxAge));
+        //if (debug == 5) console.log("age= " + age + "   maxAge= " + maxAge + "   opacity= " + opacity);
+        
+        const opacity = Math.min(settings.maxOpacity, (Math.max(settings.minOpacity, 1 - (counter / histLen))));
+        if (debug == 5) console.log("counter=" + counter + "  historyLength=" + histLen + "  counter/historyLength=" + (counter / histLen) + "  1-counter/historyLength=" + (1 - (counter / histLen)) + "  opacity=" + opacity);
+        
+        counter++;
+
+        for (const reading of readings) {
+            let x = reading.x;
+            let y = reading.y;
+
+            // Apply inversion if enabled
+            if (settings.invertX) {
+                x = settings.sensorsX - x;
+            }
+            if (!settings.invertY) {
+                y = settings.sensorsY - y;
+            }
+
+            // Scale coordinates to canvas size
+            const xScaled = x * scaleX;
+            const yScaled = y * scaleY;
+
+            if (maxValue < reading.value) maxValue = reading.value;
+            if (minValue > reading.value) minValue = reading.value;
+          
+          
+            allDataPoints.push({
+                x: xScaled,
+                y: yScaled,
+                value: reading.value,
+                opacity: opacity
+            });
+            
         }
+    }
+
+    // Update heatmap data
+    heatmapInstance.setData({
+        min: minValue,
+        max: maxValue,
+        data: allDataPoints
     });
 
-    ctx.stroke();
-    
-    // Draw the current CoP point as a larger dot
+    // Ensure overlay canvas exists and is properly sized
+    let overlayCanvas = document.getElementById('heatmap-overlay');
+    if (!overlayCanvas) {
+        overlayCanvas = document.createElement('canvas');
+        overlayCanvas.id = 'heatmap-overlay';
+        overlayCanvas.style.position = 'absolute';
+        overlayCanvas.style.top = '0';
+        overlayCanvas.style.left = '0';
+        overlayCanvas.style.pointerEvents = 'none';
+        overlayCanvas.style.zIndex = '1';
+        container.appendChild(overlayCanvas);
+    }
+    overlayCanvas.width = container.offsetWidth;
+    overlayCanvas.height = container.offsetHeight;
+
+    // Draw grid and CoP on overlay canvas
+    const ctx = overlayCanvas.getContext('2d');
+    ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+    // Draw grid
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 1;
+
+    // Draw vertical grid lines
+    const xStep = overlayCanvas.width / settings.sensorsX;
+    for (let i = 0; i <= settings.sensorsX; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * xStep, 0);
+        ctx.lineTo(i * xStep, overlayCanvas.height);
+        ctx.stroke();
+    }
+
+    // Draw horizontal grid lines
+    const yStep = overlayCanvas.height / settings.sensorsY;
+    for (let i = 0; i <= settings.sensorsY; i++) {
+        ctx.beginPath();
+        ctx.moveTo(0, i * yStep);
+        ctx.lineTo(overlayCanvas.width, i * yStep);
+        ctx.stroke();
+    }
+
+    // Draw CoP path
     if (copHistory.length > 0) {
+        ctx.strokeStyle = 'yellow';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        copHistory.forEach((point, index) => {
+            let x = point.x;
+            let y = point.y;
+            
+            // Apply inversion if enabled
+            if (settings.invertX) {
+                x = settings.sensorsX - x;
+            }
+            if (!settings.invertY) {
+                y = settings.sensorsY - y;
+            }
+            
+            // Scale coordinates to canvas size
+            x = x * scaleX;
+            y = y * scaleY;
+
+            if (index === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        });
+
+        ctx.stroke();
+
+        // Draw current CoP point
         const lastPoint = copHistory[copHistory.length - 1];
         let x = lastPoint.x;
         let y = lastPoint.y;
         
-        // Apply inversion if enabled
         if (settings.invertX) {
             x = settings.sensorsX - x;
         }
-        //see above comments for inverting cartesian Y axis in heatmap.js screen coordinate system
         if (!settings.invertY) {
             y = settings.sensorsY - y;
         }
         
-        // Scale coordinates to canvas size
-        x = (x * canvas.width) / settings.sensorsX;
-        y = (y * canvas.height) / settings.sensorsY;
+        x = x * scaleX;
+        y = y * scaleY;
 
         ctx.beginPath();
         ctx.fillStyle = 'yellow';
         ctx.arc(x, y, 4, 0, Math.PI * 2);
         ctx.fill();
     }
-    
-    //ctx.restore();  //can't tell if these help or not.  commenting the save and restores out seems to maybe help a little on the heatmap problem
   
+}, 16);  //50 ms (approx 20 fps) // 16ms debounce time (approximately 60fps)
+
+// Replace your existing updateHeatmapWithHistory function with this wrapper
+function updateHeatmapWithHistory() {
+    debouncedUpdateHeatmap(dataHistory, copHistory, settings);
 }
 
 
+//Ensures container and canvas both width and height are exact multiples of sensor count
+function adjustContainerDimensions() {
+    const container = document.getElementById('heatmap-container');
+    const sensorCountX = settings.sensorsX;
+    const sensorCountY = settings.sensorsY;
+    
+    // Get current dimensions
+    const currentWidth = container.offsetWidth;
+    const currentHeight = container.offsetHeight;
+    
+    // Calculate pixels per sensor
+    const pixelsPerSensorX = Math.round(currentWidth / sensorCountX);
+    const pixelsPerSensorY = Math.round(currentHeight / sensorCountY);
+    
+    // Calculate adjusted dimensions
+    const adjustedWidth = pixelsPerSensorX * sensorCountX;
+    const adjustedHeight = pixelsPerSensorY * sensorCountY;
+    
+    // Apply adjusted dimensions
+    container.style.width = `${adjustedWidth}px`;
+    container.style.height = `${adjustedHeight}px`;
+
+    // Also adjust the overlay canvas
+    const overlayCanvas = document.getElementById('heatmap-overlay');
+    if (overlayCanvas) {
+        overlayCanvas.width = adjustedWidth;
+        overlayCanvas.height = adjustedHeight;
+    }
+
+    // Force heatmap instance to update its dimensions
+    if (heatmapInstance) {
+        heatmapInstance.setDataMax(settings.maxValue);
+    }
+}
+
+
+
+
+/*
+//Added nested requestAnimationFrame calls to ensure proper rendering sequence  //Added try-catch blocks for better error handling
+//Added debug logging for key values when errors occur  //Kept the z-index separation between layers (heatmap: 1, overlay: 2)
+//Maintained all the scaling and coordinate transformations  //Added error handling for canvas initialization and rendering
+function updateHeatmapWithHistory() {
+    if (!heatmapInstance || dataHistory.length === 0) return;
+
+    const now = Date.now();  // timestamp since epoch in ms
+    const maxAge = settings.historyLength * 1000;  // converts historyLength in seconds to milliseconds
+
+    let minValue = Infinity;   // Start with the largest possible value
+    let maxValue = -Infinity;  // Start with the smallest possible value
+
+    // Get canvas dimensions and scaling factors
+    const container = document.getElementById('heatmap-container');
+    const canvas = document.getElementById('heatmap');
+    const scaleX = container.offsetWidth / settings.sensorsX;
+    const scaleY = container.offsetHeight / settings.sensorsY;
+
+    // Process and scale the data points
+    const allDataPoints = [];
+    for (const { timestamp, readings } of dataHistory) {
+        const age = now - timestamp;
+        const opacity = Math.max(settings.minOpacity, 1 - (age / maxAge));
+
+        for (const reading of readings) {
+            let x = reading.x;
+            let y = reading.y;
+
+            // Apply inversion if enabled
+            if (settings.invertX) {
+                x = settings.sensorsX - x;
+            }
+            if (!settings.invertY) {
+                y = settings.sensorsY - y;
+            }
+
+            // Scale coordinates to canvas size
+            const xScaled = x * scaleX;
+            const yScaled = y * scaleY;
+
+            if (maxValue < reading.value) maxValue = reading.value;
+            if (minValue > reading.value) minValue = reading.value;
+
+            allDataPoints.push({
+                x: xScaled,
+                y: yScaled,
+                value: reading.value,
+                opacity: opacity
+            });
+        }
+    }
+
+    // Ensure overlay canvas exists and is properly sized
+    let overlayCanvas = document.getElementById('heatmap-overlay');
+    if (!overlayCanvas) {
+        overlayCanvas = document.createElement('canvas');
+        overlayCanvas.id = 'heatmap-overlay';
+        overlayCanvas.style.position = 'absolute';
+        overlayCanvas.style.top = '0';
+        overlayCanvas.style.left = '0';
+        overlayCanvas.style.pointerEvents = 'none';
+        overlayCanvas.style.zIndex = '2';
+        container.appendChild(overlayCanvas);
+    }
+    overlayCanvas.width = container.offsetWidth;
+    overlayCanvas.height = container.offsetHeight;
+
+    // Use requestAnimationFrame to sync with browser's rendering cycle
+    requestAnimationFrame(() => {
+        // Update heatmap first
+        try {
+            heatmapInstance.setData({
+                min: minValue,
+                max: maxValue,
+                data: allDataPoints
+            });
+
+            // Wait for next frame to update overlay
+            requestAnimationFrame(() => {
+                try {
+                    const ctx = overlayCanvas.getContext('2d');
+                    ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+                    // Draw grid
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                    ctx.lineWidth = 1;
+
+                    // Draw vertical grid lines
+                    const xStep = overlayCanvas.width / settings.sensorsX;
+                    for (let i = 0; i <= settings.sensorsX; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(i * xStep, 0);
+                        ctx.lineTo(i * xStep, overlayCanvas.height);
+                        ctx.stroke();
+                    }
+
+                    // Draw horizontal grid lines
+                    const yStep = overlayCanvas.height / settings.sensorsY;
+                    for (let i = 0; i <= settings.sensorsY; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(0, i * yStep);
+                        ctx.lineTo(overlayCanvas.width, i * yStep);
+                        ctx.stroke();
+                    }
+
+                    // Draw CoP path
+                    if (copHistory.length > 0) {
+                        ctx.strokeStyle = 'yellow';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+
+                        copHistory.forEach((point, index) => {
+                            let x = point.x;
+                            let y = point.y;
+                            
+                            // Apply inversion if enabled
+                            if (settings.invertX) {
+                                x = settings.sensorsX - x;
+                            }
+                            if (!settings.invertY) {
+                                y = settings.sensorsY - y;
+                            }
+                            
+                            // Scale coordinates to canvas size
+                            x = x * scaleX;
+                            y = y * scaleY;
+
+                            if (index === 0) {
+                                ctx.moveTo(x, y);
+                            } else {
+                                ctx.lineTo(x, y);
+                            }
+                        });
+
+                        ctx.stroke();
+
+                        // Draw current CoP point
+                        const lastPoint = copHistory[copHistory.length - 1];
+                        let x = lastPoint.x;
+                        let y = lastPoint.y;
+                        
+                        if (settings.invertX) {
+                            x = settings.sensorsX - x;
+                        }
+                        if (!settings.invertY) {
+                            y = settings.sensorsY - y;
+                        }
+                        
+                        x = x * scaleX;
+                        y = y * scaleY;
+
+                        ctx.beginPath();
+                        ctx.fillStyle = 'yellow';
+                        ctx.arc(x, y, 4, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                } catch (error) {
+                    console.error('Error updating overlay canvas:', error);
+                    if (debug === 2) {
+                        console.log('Overlay canvas dimensions:', overlayCanvas.width, overlayCanvas.height);
+                        console.log('CoP history length:', copHistory.length);
+                        console.log('Scale factors:', scaleX, scaleY);
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error updating heatmap:', error);
+            if (debug === 2) {
+                console.log('Data points count:', allDataPoints.length);
+                console.log('Value range:', minValue, maxValue);
+            }
+        }
+    });
+}
+
+*/
 
 
 function calculatePressureDistribution(readings) {  //this is for the weight distribution stuff
@@ -1952,6 +2366,7 @@ function processFrame(frame) {
             }          
         }        
         updateHeatmapWithHistory();
+        
         updateRawData(readings, cop);
         updateCoPGraph(); // Add this line
         //calculateFootPressureDistribution(readings);  //this was for only doing front vs back foot  // Add this line where you process new sensor readings      
@@ -2337,5 +2752,11 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   
 });
+
+//Add a window resize handler for the ensuring container and canvas both width and height are exact multiples of sensor count
+window.addEventListener('resize', debounce(() => {
+    adjustContainerDimensions();
+    updateHeatmapWithHistory();
+}, 250));
 
 
