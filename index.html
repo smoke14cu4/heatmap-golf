@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BLE Pressure Sensor Visualization</title>  <!-- this shows up in the window's title bar -->
     
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>  <!-- Include Plotly -->
+    <!--<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>  -->
+    <script src="https://cdn.plot.ly/plotly-3.0.0.min.js"></script>  <!-- Include Plotly - now have to specify the version of plotly to use -->
+  
     <script src="heatmap.js"></script>  <!--  heatmap.js library included in file structure -->
     <script src="script.js" defer></script> <!-- Your custom script -->
   
@@ -147,21 +149,19 @@
         
         <!-- <div id="status"></div> -->
 
-        <div class="visualization-container">            
-              
-              <!-- Heatmap spans full width -->
-              <div id="heatmap"></div>
+        <div class="visualization-container">
+            <div id="heatmap-container" class="heatmap-wrapper">
+                <div id="heatmap"></div>
+                <canvas id="heatmap-overlay"></canvas>                
+            </div>
 
-              <!-- CoP graph and raw data side-by-side -->
-              <div class="cop-and-data">
-                  <div id="cop-graph" style="width: 100%; height: 400px;"></div>          
-                  <div class="raw-data-panel">
-                      <!--<h3>Raw Data</h3>-->
-                      <h3>Coordinates Data</h3>
-                      <div id="raw-data"></div>            
-                  </div>                    
-              </div>
-          
+            <div class="cop-and-data">
+                <div id="cop-graph" style="width: 100%; height: 400px;"></div>          
+                <div class="raw-data-panel">
+                    <h3>Coordinates Data</h3>
+                    <div id="raw-data"></div>            
+                </div>                    
+            </div>
         </div>
                 
       
