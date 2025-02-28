@@ -53,29 +53,49 @@ h1 {
 
 
 
-
-
-
-
-
-/* Visualization container */
 .visualization-container {
     display: flex;
     flex-direction: column;
-    gap: 20px; /* Spacing between the heatmap and the CoP/Raw Data section */
+    gap: 20px;
 }
 
-/* Heatmap */
-#heatmap {
+.heatmap-wrapper {
+        /* You may need to fine-tune the initial container size in your CSS to ensure it starts with dimensions that work well with your sensor counts. For example: */
+        /* For sensorsX = 23, this would give you 920px width (23 * 40px per sensor) */
+    /* max-width: 920px; */
+        /* For sensorsY = 11, this would give you 440px height (11 * 40px per sensor) */
+    /* height: 440px; */
+        /* Center the container if needed */
+    /* margin: 0 auto; */
+  
     width: 100%;
     height: 400px;
-    /* border-top: 1px solid #cccccc; */  /* the grey bar  */
+    position: relative;
     background-color: white;
     border-radius: 4px;
-    position: relative;
-    z-index: 10; /* Ensure it's on top */
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Optional for a clean look */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
 }
+
+#heatmap {
+    position: absolute;
+    top: 0;
+    left: 0;    
+    width: 100% !important; /* Add !important */
+    height: 100% !important; /* Add !important */
+    z-index: 1;
+}
+
+#heatmap-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;    
+    width: 100% !important; /* Add !important */
+    height: 100% !important; /* Add !important */
+    pointer-events: none;
+    z-index: 2;
+}
+
 
 /* CoP graph and raw data display */
 .cop-and-data {
