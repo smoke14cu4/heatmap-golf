@@ -7,13 +7,40 @@ body {
 }
 
 .container {
-    max-width: 800px;
+    max-width: 1600px;
     margin: 0 auto;
+    padding: 0 20px;
 }
 
 h1 {
     text-align: center;
     color: #333333;
+}
+
+/* Main content wrapper for responsive layout */
+.main-content-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Media query for wide screens */
+@media screen and (min-width: 1200px) {
+    .main-content-wrapper {
+        flex-direction: row;
+        align-items: flex-start;
+    }
+
+    .left-column {
+        flex: 3;
+        min-width: 0;
+    }
+
+    .right-column {
+        flex: 2;
+        min-width: 300px;
+        max-width: 500px;
+    }
 }
 
 /* Controls section */
@@ -52,22 +79,145 @@ h1 {
 }
 
 
+/* Settings section */
+.settings-controls, .mat-settings {
+    margin: 5px 0;
+    border-top: 1px solid #cccccc;
+    padding: 2px;
+    border-radius: 4px;
+}
+
+#settingsSection, #matSettingsSection {
+    margin-top: 2px;
+    margin-bottom: 2px;
+}
+
+.control-group {
+    margin: 5px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.control-group label {
+    min-width: 200px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.control-group label input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+.control-group input[type="number"] {
+    width: 60px;
+    padding: 5px;
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+}
+
+.control-group input[type="range"] {
+    flex: 1;
+    margin: 0;
+}
+
+/* Mat settings */
+.mat-settings {
+    border-top: 1px solid #cccccc;    
+    padding-top: 2px;
+    margin-top: 2px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+    width: 100%;
+    max-width: 100%;
+}
+
+.mat-control {
+    margin: 2px 0;
+}
+
+.mat-control.checkbox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.mat-control input[type="number"] {
+    width: 60px;
+}
+
+/* Toggle switches */
+.toggle-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 2px;
+    padding-bottom: 2px;
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 34px;
+    height: 20px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #cccccc;
+    transition: 0.4s;
+    border-radius: 20px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #4CAF50;
+}
+
+input:checked + .slider:before {
+    transform: translateX(14px);
+}
+
 
 .visualization-container {
     display: flex;
     flex-direction: column;
     gap: 20px;
+    width: 100%;
 }
 
-.heatmap-wrapper {
-        /* You may need to fine-tune the initial container size in your CSS to ensure it starts with dimensions that work well with your sensor counts. For example: */
+.heatmap-wrapper {  
+    /* You may need to fine-tune the initial container size in your CSS to ensure it starts with dimensions that work well with your sensor counts. For example: */
         /* For sensorsX = 23, this would give you 920px width (23 * 40px per sensor) */
     /* max-width: 920px; */
         /* For sensorsY = 11, this would give you 440px height (11 * 40px per sensor) */
     /* height: 440px; */
         /* Center the container if needed */
-    /* margin: 0 auto; */
-  
+    /* margin: 0 auto; */  
     width: 100%;
     height: 400px;
     position: relative;
@@ -81,8 +231,8 @@ h1 {
     position: absolute;
     top: 0;
     left: 0;    
-    width: 100% !important; /* Add !important */
-    height: 100% !important; /* Add !important */
+    width: 100% !important;
+    height: 100% !important;
     z-index: 1;
 }
 
@@ -90,36 +240,34 @@ h1 {
     position: absolute;
     top: 0;
     left: 0;    
-    width: 100% !important; /* Add !important */
-    height: 100% !important; /* Add !important */
+    width: 100% !important;
+    height: 100% !important;
     pointer-events: none;
     z-index: 2;
 }
-
 
 /* CoP graph and raw data display */
 .cop-and-data {
     display: flex;
     flex-direction: row;
-    gap: 5px; /* Spacing between CoP graph and raw data */
+    gap: 5px;  /* Spacing between CoP graph and raw data */
 }
 
 #cop-graph {
-    flex: 3; /* CoP graph takes up 3 parts of the width */
+    flex: 3;  /* CoP graph takes up 3 parts of the width */
     background-color: white;
     border-radius: 4px;
     border: 1px solid #cccccc;
-    /* box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);*/    /* Optional for a clean look */
 }
 
 .raw-data-panel {
-    flex: 1; /* Raw data takes up 1 part of the width */
+    flex: 1;
     background-color: #f8f8f8;
     padding: 10px;
     border-radius: 4px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    max-height: 400px; /* Matches the CoP graph height */
-    overflow-y: auto; /* Add scrolling if the content exceeds the height */
+    max-height: 400px;  /* Matches the CoP graph height */
+    overflow-y: auto;  /* Add scrolling if the content exceeds the height */
 }
 
 .raw-data-panel h3 {
@@ -197,125 +345,6 @@ h1 {
     max-height: 200px;
     overflow-y: auto;
 }
-
-
-
-/* Settings section */
-.settings-controls {
-    margin: 5px 0;
-    border-top: 1px solid #cccccc;
-    padding: 10px;
-    /* background-color: white; */    
-    /* box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); */
-    border-radius: 4px;
-}
-
-.control-group {
-    margin: 5px 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.control-group label {
-    min-width: 200px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.control-group input[type="number"] {
-    width: 60px;
-    padding: 5px;
-    border: 1px solid #cccccc;
-    border-radius: 4px;
-}
-
-.control-group input[type="range"] {
-    flex: 1;
-    margin: 0;
-}
-
-/* Mat settings */
-.mat-settings {
-    border-top: 1px solid #cccccc;    
-    padding-top: 15px;
-    margin-top: 15px;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 10px;
-    /* background-color: white; */
-    width: 100%;
-    max-width: 100%;
-}
-
-.mat-control {
-    margin: 5px 0;
-}
-
-.mat-control.checkbox {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.mat-control input[type="number"] {
-    width: 60px;
-}
-
-/* Toggle switches */
-.toggle-container {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 10px;
-}
-
-.toggle-switch {
-    position: relative;
-    display: inline-block;
-    width: 34px;
-    height: 20px;
-}
-
-.toggle-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: #cccccc;
-    transition: 0.4s;
-    border-radius: 20px;
-}
-
-.slider:before {
-    position: absolute;
-    content: "";
-    height: 14px;
-    width: 14px;
-    left: 3px;
-    bottom: 3px;
-    background-color: white;
-    transition: 0.4s;
-    border-radius: 50%;
-}
-
-input:checked + .slider {
-    background-color: #4CAF50;
-}
-
-input:checked + .slider:before {
-    transform: translateX(14px);
-}
-
 
 .cop-controls {
     margin: 10px 0;
@@ -409,5 +438,11 @@ input:checked + .slider:before {
     margin-top: 10px;
 }
 
+/* Ensure panels in right column maintain proper spacing */
+.right-column > * {
+    margin-bottom: 20px;
+}
 
-
+.right-column > *:last-child {
+    margin-bottom: 0;
+}
