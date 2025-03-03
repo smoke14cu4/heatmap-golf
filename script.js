@@ -1033,7 +1033,8 @@ const debouncedUpdateHeatmap = debounce((dataHistory, copHistory, settings) => {
         ctx.fill();
     }
   
-}, 16);  //50 ms (approx 20 fps) // 16ms debounce time (approximately 60fps)
+}, 16);  //50 ms (approx 20 fps) // 16ms debounce time (approximately 60fps)  
+          //16 works with fixed heatmap container dimension checking
 
 // Replace your existing updateHeatmapWithHistory function with this wrapper
 function updateHeatmapWithHistory() {
@@ -1042,6 +1043,7 @@ function updateHeatmapWithHistory() {
 
 
 //Ensures container and canvas both width and height are exact multiples of sensor count
+//this was the big thing to fix the heatmap not always showing up 
 function adjustContainerDimensions() {
     const container = document.getElementById('heatmap-container');
     const sensorCountX = settings.sensorsX;
@@ -1080,6 +1082,8 @@ function adjustContainerDimensions() {
 
 
 /*
+//this level of control for the graphics wasn't needed.  The problem with the heatmap not displaying
+  //was that the heatmap container width wasn't always a whole pixel, so just had to add some checks to fix it
 //Added nested requestAnimationFrame calls to ensure proper rendering sequence  //Added try-catch blocks for better error handling
 //Added debug logging for key values when errors occur  //Kept the z-index separation between layers (heatmap: 1, overlay: 2)
 //Maintained all the scaling and coordinate transformations  //Added error handling for canvas initialization and rendering
@@ -1340,7 +1344,11 @@ function updatePressureDisplay(foot, data) {
 function initializeCoPStats() {
     const readyButton = document.getElementById('readyButton');
     readyButton.addEventListener('click', startCountdown);
+}
 
+
+
+    /*
     // Add CoP trigger threshold to general settings
     const controlsDiv = document.querySelector('.settings-controls');
     const newControl = document.createElement('div');
@@ -1369,8 +1377,10 @@ function initializeCoPStats() {
     slider.addEventListener('input', (e) => {
         input.value = e.target.value;
         settings.copTriggerThreshold = parseFloat(e.target.value);
-    });
+    });  
 }
+  */
+
 
 function startCountdown() {
     const readyButton = document.getElementById('readyButton');
@@ -1552,7 +1562,8 @@ function updateCoPStats() {
 }
 
 
-
+/*
+//moved all the html stuff to index.html
 function initializeSwingControls() {
     // Add new settings controls
     const controlsDiv = document.querySelector('.settings-controls');
@@ -1612,6 +1623,28 @@ function initializeSwingControls() {
     // Initialize playback controls
     initializePlaybackControls();
 }
+*/
+
+
+function initializeSwingControls() {
+    // Only need to set up event listeners since controls are now in HTML
+    setupSettingControl('swingDuration');
+    setupSettingControl('stopTriggerThreshold');
+    setupSettingControl('copTriggerThreshold');
+    
+    // Add checkbox event listeners
+    document.getElementById('useFixedDurationStop').addEventListener('change', (e) => {
+        settings.useFixedDurationStop = e.target.checked;
+    });
+    
+    document.getElementById('useMovementThresholdStop').addEventListener('change', (e) => {
+        settings.useMovementThresholdStop = e.target.checked;
+    });
+    
+    // Initialize playback controls
+    initializePlaybackControls();
+}
+
 
 function setupSettingControl(settingName) {
     const input = document.getElementById(settingName);
