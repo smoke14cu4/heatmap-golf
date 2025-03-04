@@ -36,6 +36,7 @@ let playbackInterval = null;
 let currentFrameIndex = 0;
 let recordedReadings = [];
 
+let copMode = 'normal'; // Default mode
 
 
 // Default settings
@@ -91,6 +92,7 @@ window.onload = function() {
       //if (debug == 1) console.log("initializeControls fcn run and returned"); 
     initializeCoPGraph(); // Add this line
       //if (debug == 1) console.log("initializeCoPGraph fcn run and returned"); 
+    initializeCoPModeToggle(); // Add this line
     updateConnectionInfo('Heatmap initialized successfully');
       //if (debug == 1) console.log("updateConnectionInfo fcn run and returned"); 
     initializeCoPStats();
@@ -262,6 +264,22 @@ function initializeControls() {
   
 }
 
+
+function initializeCoPModeToggle() {
+  
+    // Add event listeners
+    document.getElementById('normalMode').addEventListener('change', () => {
+        copMode = 'normal';
+        updateCoPGraph();
+    });
+    document.getElementById('deltaMode').addEventListener('change', () => {
+        copMode = 'delta';
+        updateCoPGraph();
+    });
+}
+
+
+
 // Update setting values
 function updateSetting(setting, value) {
     value = parseFloat(value);
@@ -375,6 +393,7 @@ function initializeCoPGraph() {
 }
 
 
+/*
 //update CoP Graph for Plotly Graphing
 function updateCoPGraph() {
     if (!copHistory || copHistory.length < 1) return;
@@ -432,6 +451,99 @@ function updateCoPGraph() {
     // Update the graph
     Plotly.newPlot('cop-graph', [trace], layout);
 }
+*/
+
+
+function updateCoPGraph() {
+    if (!copHistory || copHistory.length < 1) return;
+
+    let inchesPerSensorX = settings.matWidth / settings.sensorsX;
+    let inchesPerSensorY = settings.matHeight / settings.sensorsY;
+
+    // Prepare data points based on mode
+    let xValues, yValues;
+    let title, xAxisTitle, yAxisTitle;
+
+    // First, adjust all points for inversion settings
+    const adjustedCoPHistory = copHistory.map(point => ({
+        x: settings.invertX ? (settings.sensorsX - point.x) : point.x,
+        y: settings.invertY ? (settings.sensorsY - point.y) : point.y,
+    }));
+
+    if (copMode === 'normal') {
+        // Normal mode - use absolute coordinates
+        if (settings.invertX) {
+            xValues = adjustedCoPHistory.map(point => point.x);
+        } else {
+            xValues = adjustedCoPHistory.map(point => point.x);
+        }
+        
+        if (settings.invertY) {
+            yValues = adjustedCoPHistory.map(point => point.y);
+        } else {
+            yValues = adjustedCoPHistory.map(point => point.y);
+        }
+        
+        title = 'Center of Pressure (CoP) Graph';
+        xAxisTitle = 'X Position (coordinate)';
+        yAxisTitle = 'Y Position (coordinate)';
+    } else {
+        // Delta mode - calculate relative to oldest point
+        const basePoint = adjustedCoPHistory[0]; // Oldest point
+        
+        if (settings.invertX) {
+            xValues = adjustedCoPHistory.map(point => 
+                (point.x - basePoint.x) * inchesPerSensorX
+            );
+        } else {
+            xValues = adjustedCoPHistory.map(point => 
+                (point.x - basePoint.x) * inchesPerSensorX
+            );
+        }
+        
+        if (settings.invertY) {
+            yValues = adjustedCoPHistory.map(point => 
+                (point.y - basePoint.y) * inchesPerSensorY
+            );
+        } else {
+            yValues = adjustedCoPHistory.map(point => 
+                (point.y - basePoint.y) * inchesPerSensorY
+            );
+        }
+        
+        title = 'Center of Pressure (CoP) Delta';
+        xAxisTitle = 'X Delta (inches)';
+        yAxisTitle = 'Y Delta (inches)';
+    }
+
+    const trace = {
+        x: xValues,
+        y: yValues,
+        mode: 'lines+markers',
+        type: 'scatter',
+        marker: { color: 'blue', size: 6 },
+    };
+
+    // Prepare layout with axis directions based on inversion settings
+    const layout = {
+        title: title,
+        xaxis: {
+            title: xAxisTitle,
+            autorange: settings.invertX ? true : true, // You can change this to 'reverse' if needed
+            // autorange: settings.invertX ? 'reversed' : true, // Alternative if you want to reverse the axis
+        },
+        yaxis: {
+            title: yAxisTitle,
+            autorange: settings.invertY ? true : true, // You can change this to 'reverse' if needed
+            // autorange: settings.invertY ? 'reversed' : true, // Alternative if you want to reverse the axis
+        },
+        showlegend: false,
+    };
+
+    // Update the graph
+    Plotly.newPlot('cop-graph', [trace], layout);
+}
+
 
 
 //updated to help prevent the heatmap not rendering correctly  //creates seperate overlay canvases
@@ -1362,16 +1474,42 @@ function updateCoPGraphWithRecordedSwing(frame, frameIndex) {
     //const yValues = slicedPlaybackData.map(slicedPlaybackData => slicedPlaybackData.cop.y);
       
       //for inches display
-    const xValues = slicedPlaybackData.map(slicedPlaybackData => slicedPlaybackData.cop.x * inchesPerSensorX);
-    const yValues = slicedPlaybackData.map(slicedPlaybackData => slicedPlaybackData.cop.y * inchesPerSensorY);
+ //   const xValues = slicedPlaybackData.map(slicedPlaybackData => slicedPlaybackData.cop.x * inchesPerSensorX);
+ //   const yValues = slicedPlaybackData.map(slicedPlaybackData => slicedPlaybackData.cop.y * inchesPerSensorY);
   
   
     // Determine min and max values
-    const xMin = Math.min(...xValues);
-    const xMax = Math.max(...xValues);
-    const yMin = Math.min(...yValues);
-    const yMax = Math.max(...yValues);
+    //const xMin = Math.min(...xValues);
+    //const xMax = Math.max(...xValues);
+    //const yMin = Math.min(...yValues);
+    //const yMax = Math.max(...yValues);
 
+    
+    let xValues, yValues;
+    let title, xAxisTitle, yAxisTitle;
+
+    if (copMode === 'normal') {
+        // Normal mode - use absolute coordinates
+        xValues = slicedPlaybackData.map(data => data.cop.x);
+        yValues = slicedPlaybackData.map(data => data.cop.y);
+        title = 'Center of Pressure (CoP) Graph';
+        xAxisTitle = 'X Position (coordinate)';
+        yAxisTitle = 'Y Position (coordinate)';
+    } else {
+        // Delta mode - calculate relative to oldest point
+        const basePoint = slicedPlaybackData[0].cop;
+        xValues = slicedPlaybackData.map(data => 
+            (data.cop.x - basePoint.x) * inchesPerSensorX
+        );
+        yValues = slicedPlaybackData.map(data => 
+            (data.cop.y - basePoint.y) * inchesPerSensorY
+        );
+        title = 'Center of Pressure (CoP) Delta';
+        xAxisTitle = 'X Delta (inches)';
+        yAxisTitle = 'Y Delta (inches)';
+    }
+  
+  
     const trace = {
         x: xValues,
         y: yValues,
@@ -1380,6 +1518,8 @@ function updateCoPGraphWithRecordedSwing(frame, frameIndex) {
         marker: { color: 'blue', size: 6 },
     };
 
+    
+    /*
     // Prepare layout
     const layout = {
         title: 'Center of Pressure (CoP) Graph',
@@ -1397,6 +1537,21 @@ function updateCoPGraphWithRecordedSwing(frame, frameIndex) {
             //range: invertY ? [yMin - 1, yMax + 1] : [yMax + 1, yMin - 1],  //this inverts it back again // Invert Y axis based on checkbox state
         },
     };
+    */
+  
+  
+    const layout = {
+        title: title,
+        xaxis: {
+            title: xAxisTitle,
+            autorange: true
+        },
+        yaxis: {
+            title: yAxisTitle,
+            autorange: true
+        }
+    };
+  
 
     // Update the graph
     Plotly.newPlot('cop-graph', [trace], layout);
