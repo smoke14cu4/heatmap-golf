@@ -8,7 +8,7 @@ const MICROCHIP_UART_SERVICE = '49535343-fe7d-4ae5-8fa9-9fafd205e455';
 const MICROCHIP_UART_TX = '49535343-1e4d-4bd9-ba61-23c647249616';
 const MICROCHIP_UART_RX = '49535343-8841-43f4-a8d4-ecbe34729bb3';
 
-const debug = 0;  //set to 1 to allow console.log debug messages  //set to 0 to turn off
+const debug = 0;  //4 is for foot pressure %  //5 is for playback stuff  //6 shows recorded data  //set to 1 to allow console.log debug messages  //set to 0 to turn off
 
 let bluetoothDevice;
 let characteristic;
@@ -61,7 +61,7 @@ const settings = {
     //minOpacity: 0,   // decreased tp 0 to try to not show so much history, even when history length set to 0  
     maxValue: 2000,
     minValue: 200,
-    copHistoryLength: 30,
+    copHistoryLength: 60,
     matWidth: 46,          // inches
     matHeight: 22,         // inches
     sensorsX: 23,          // number of sensors in X direction
@@ -393,66 +393,6 @@ function initializeCoPGraph() {
 }
 
 
-/*
-//update CoP Graph for Plotly Graphing
-function updateCoPGraph() {
-    if (!copHistory || copHistory.length < 1) return;
-  
-    // Check the state of the invert checkboxes
-    const invertX = document.getElementById('invertX').checked;
-    const invertY = document.getElementById('invertY').checked;
-  
-    // Adjust X and Y coordinates based on inversion setting
-    const adjustedCoPReadings = copHistory.map(point => ({
-        ...point,
-        adjustedX: settings.invertX ? (settings.sensorsX - point.x) : point.x,
-        adjustedY: settings.invertY ? (settings.sensorsY - point.y) : point.y      
-    }));
-  
-    // Prepare data for Plotly
-    //const xValues = copHistory.map(point => point.x);
-    //const yValues = copHistory.map(point => point.y);
-    const xValues = adjustedCoPReadings.map(adjustedCoPReading => adjustedCoPReading.adjustedX);
-    const yValues = adjustedCoPReadings.map(adjustedCoPReading => adjustedCoPReading.adjustedY);
-  
-  
-    // Determine min and max values
-    const xMin = Math.min(...xValues);
-    const xMax = Math.max(...xValues);
-    const yMin = Math.min(...yValues);
-    const yMax = Math.max(...yValues);
-
-    const trace = {
-        x: xValues,
-        y: yValues,
-        mode: 'lines+markers',
-        type: 'scatter',
-        marker: { color: 'blue', size: 6 },
-    };
-
-    // Prepare layout
-    const layout = {
-        title: 'Center of Pressure (CoP) Graph',
-        xaxis: {
-            //title: 'X Position (inches)',
-            title: 'X Position (coordinate)',
-            autorange: true,
-            //range: invertX ? [xMax + 1, xMin - 1] : [xMin - 1, xMax + 1], // Adjust range for inversion
-        },
-        yaxis: {
-            //title: 'Y Position (inches)',
-            title: 'Y Position (coordinate)',
-            autorange: true,
-            //range: invertY ? [yMax + 1, yMin - 1] : [yMin - 1, yMax + 1],  // Invert Y axis based on checkbox state
-            //range: invertY ? [yMin - 1, yMax + 1] : [yMax + 1, yMin - 1],  //this inverts it back again // Invert Y axis based on checkbox state
-        },
-    };
-
-    // Update the graph
-    Plotly.newPlot('cop-graph', [trace], layout);
-}
-*/
-
 
 function updateCoPGraph() {
     if (!copHistory || copHistory.length < 1) return;
@@ -530,12 +470,62 @@ function updateCoPGraph() {
         xaxis: {
             title: xAxisTitle,
             autorange: settings.invertX ? true : true, // You can change this to 'reverse' if needed
-            // autorange: settings.invertX ? 'reversed' : true, // Alternative if you want to reverse the axis
+            // autorange: settings.invertX ? 'reversed' : true, // Alternative if you want to reverse the axis            
+            //tickformat: '.2f',  // Format to 2 decimal places
+            tickformat: '0.2f',    // Changed from '.2f' to '0.2f' for better compatibility  
+            //tickformat: '0.1f',    // changed to 1 decimal place
+            //dtick: 0.01        // Minimum tick increment of 0.01
+            //dtick: 0.05,        // Minimum tick increment of 0.01
+            nticks: 10,            // Suggest number of ticks
+            /*
+            tickformatstops: [
+                {
+                    dtickrange: [null, 0.01],  // For very zoomed in views
+                    value: '.2f'
+                },
+                {
+                    dtickrange: [0.01, 0.1],   // For moderate zoom
+                    value: '.2f'
+                },
+                {
+                    dtickrange: [0.1, null],    // For zoomed out views
+                    value: '.1f'
+                }
+            ],
+            */
+            exponentformat: 'none', // Prevent scientific notation
+            showexponent: 'none'    // Prevent scientific notation
+            
         },
         yaxis: {
             title: yAxisTitle,
             autorange: settings.invertY ? true : true, // You can change this to 'reverse' if needed
             // autorange: settings.invertY ? 'reversed' : true, // Alternative if you want to reverse the axis
+            //tickformat: '.2f',  // Format to 2 decimal places
+            tickformat: '0.2f',    // Changed from '.2f' to '0.2f' for better compatibility
+            //tickformat: '0.1f',    // changed to 1 decimal place
+            //dtick: 0.01        // Minimum tick increment of 0.01            
+            //dtick: 0.05,        // Minimum tick increment of 0.01            
+            nticks: 10,            // Suggest number of ticks
+            /*
+            tickformatstops: [
+                {
+                    dtickrange: [null, 0.01],  // For very zoomed in views
+                    value: '.2f'
+                },
+                {
+                    dtickrange: [0.01, 0.1],   // For moderate zoom
+                    value: '.2f'
+                },
+                {
+                    dtickrange: [0.1, null],    // For zoomed out views
+                    value: '.1f'
+                }
+            ],
+            */
+            exponentformat: 'none', // Prevent scientific notation
+            showexponent: 'none'    // Prevent scientific notation
+            
         },
         showlegend: false,
     };
@@ -1148,7 +1138,10 @@ function initializePlayback() {
     */
   
 
-    if (debug == 5) console.log("plabackData.length= " + playbackData.length);
+    //if (debug == 6) console.log("plabackData.length= " + playbackData.length);  
+    //if (debug == 6) console.log("plabackData= " + playbackData);
+    if (debug == 6) console.log("plabackData.length= ", playbackData.length);  
+    if (debug == 6) console.log("plabackData= ", playbackData);
   
     const slider = document.getElementById('frameSlider');
     slider.max = playbackData.length - 1;
@@ -1158,7 +1151,8 @@ function initializePlayback() {
   
 }
 
-
+//I don't think that renderFrame function is called anymore.  
+  //I think the updateVisualizationsForFrame function is done instead
 function renderFrame(frame) {
     if (!frame) return;
   
@@ -1202,6 +1196,9 @@ function renderFrame(frame) {
 
 function showFrame(frameIndex) {  
     if (!playbackData || frameIndex < 0 || frameIndex >= playbackData.length) return;
+  
+    if (debug == 6) console.log("playbackData = (below): ");
+    if (debug == 6) console.log(playbackData);
     
     const frame = playbackData[frameIndex];
     const startTime = playbackData[0].timestamp;
@@ -1474,8 +1471,8 @@ function updateCoPGraphWithRecordedSwing(frame, frameIndex) {
     //const yValues = slicedPlaybackData.map(slicedPlaybackData => slicedPlaybackData.cop.y);
       
       //for inches display
- //   const xValues = slicedPlaybackData.map(slicedPlaybackData => slicedPlaybackData.cop.x * inchesPerSensorX);
- //   const yValues = slicedPlaybackData.map(slicedPlaybackData => slicedPlaybackData.cop.y * inchesPerSensorY);
+    //const xValues = slicedPlaybackData.map(slicedPlaybackData => slicedPlaybackData.cop.x * inchesPerSensorX);
+    //const yValues = slicedPlaybackData.map(slicedPlaybackData => slicedPlaybackData.cop.y * inchesPerSensorY);
   
   
     // Determine min and max values
@@ -1544,11 +1541,25 @@ function updateCoPGraphWithRecordedSwing(frame, frameIndex) {
         title: title,
         xaxis: {
             title: xAxisTitle,
-            autorange: true
+            autorange: true,
+            //tickformat: '.2f',  // Format to 2 decimal places
+            //dtick: 0.01        // Minimum tick increment of 0.01
+            tickformat: '0.2f',    // Changed from '.2f' to '0.2f' for better compatibility
+            //tickformat: '0.1f',    // changed to 1 decimal place
+            nticks: 10,            // Suggest number of ticks
+            exponentformat: 'none', // Prevent scientific notation
+            showexponent: 'none'    // Prevent scientific notation
         },
         yaxis: {
             title: yAxisTitle,
-            autorange: true
+            autorange: true,
+            //tickformat: '.2f',  // Format to 2 decimal places
+            //dtick: 0.01        // Minimum tick increment of 0.01
+            tickformat: '0.2f',    // Changed from '.2f' to '0.2f' for better compatibility
+            //tickformat: '0.1f',    // changed to 1 decimal place
+            nticks: 10,            // Suggest number of ticks
+            exponentformat: 'none', // Prevent scientific notation
+            showexponent: 'none'    // Prevent scientific notation
         }
     };
   
@@ -1785,7 +1796,9 @@ function processFrame(frame) {
         // Trim history if needed
         if (dataHistory.length > settings.historyLength) {
             dataHistory = dataHistory.slice(-settings.historyLength);
-        }      
+        }   
+      
+        if (debug == 6) console.log("dataHistory: ", dataHistory);
       
         if (cop) {
             copHistory.push(cop);  //this adds an element to the end of the array
@@ -1795,8 +1808,13 @@ function processFrame(frame) {
                 copHistory = copHistory.slice(-settings.copHistoryLength);
                 //copHistory.pop();  //didn't work
                 //copHistory.splice(0, 1);  //this deletes one element from the array at index 0  //i.e. it removes copHistory[0] and shifts everything left
-            }          
-        }        
+            }
+          
+            if (debug == 6) console.log("copHistory: ", copHistory);
+          
+        }
+      
+      
         updateHeatmapWithHistory();
         
         updateRawData(readings, cop);
@@ -1948,49 +1966,6 @@ function updateRawData(readings, cop) {
 }
 
 
-/*
-// Modified connectToDevice function to clear buffer on new connection
-async function connectToDevice(device) {
-    try {
-        bluetoothDevice = device;
-        // Clear the data buffer when connecting to a new device
-        dataBuffer = '';
-        
-        updateStatus('Connecting to device...');
-        updateConnectionInfo(`Connecting to device: ${device.name || 'Unnamed Device'}`);
-        
-        // Add disconnect event listener
-        device.addEventListener('gattserverdisconnected', handleDisconnection);
-        
-        const server = await device.gatt.connect();
-        updateConnectionInfo('GATT server connected');
-        
-        // Try Nordic UART first, then Microchip UART
-        let service;
-        try {
-            service = await server.getPrimaryService(NORDIC_UART_SERVICE);
-            updateConnectionInfo('Connected using Nordic UART Service');
-            characteristic = await service.getCharacteristic(NORDIC_UART_TX);
-        } catch {
-            service = await server.getPrimaryService(MICROCHIP_UART_SERVICE);
-            updateConnectionInfo('Connected using Microchip UART Service');
-            characteristic = await service.getCharacteristic(MICROCHIP_UART_TX);
-        }
-
-        characteristic.addEventListener('characteristicvaluechanged', handleData);
-        await characteristic.startNotifications();
-        
-        updateConnectionInfo('Notifications started - ready to receive data');
-        updateStatus('Connected and receiving data');
-    } catch (error) {
-        console.error('Connection error:', error);
-        updateConnectionInfo('Connection failed: ' + error.message, true);
-        updateStatus('Connection failed: ' + error);
-    }
-}
-*/
-
-
 //changed to automatically connect and also automatically try to reconnect up to 3 times
 async function connectToDevice(device) {
     const MAX_RETRY_ATTEMPTS = 3;
@@ -2013,13 +1988,13 @@ async function connectToDevice(device) {
             // Try Nordic UART first, then Microchip UART
             let service;
             try {
-                service = await server.getPrimaryService(NORDIC_UART_SERVICE);
-                updateConnectionInfo('Connected using Nordic UART Service');
-                characteristic = await service.getCharacteristic(NORDIC_UART_TX);
-            } catch {
                 service = await server.getPrimaryService(MICROCHIP_UART_SERVICE);
                 updateConnectionInfo('Connected using Microchip UART Service');
                 characteristic = await service.getCharacteristic(MICROCHIP_UART_TX);
+            } catch {                
+                service = await server.getPrimaryService(NORDIC_UART_SERVICE);
+                updateConnectionInfo('Connected using Nordic UART Service');
+                characteristic = await service.getCharacteristic(NORDIC_UART_TX);
             }
 
             characteristic.addEventListener('characteristicvaluechanged', handleData);
@@ -2030,6 +2005,11 @@ async function connectToDevice(device) {
             
             // Reset auto-reconnect state since we successfully connected
             device.autoReconnectEnabled = true;
+          
+            // Enable disconnect button and disable scan button
+            document.getElementById('disconnectButton').disabled = false;
+            document.getElementById('scanButton').disabled = true;
+          
             
         } catch (error) {
             console.error('Connection error:', error);
@@ -2054,7 +2034,11 @@ async function connectToDevice(device) {
 //changed to automatically connect and also automatically try to reconnect up to 3 times
 function handleDisconnection(event) {
     const device = event.target;
-    updateConnectionInfo('Device disconnected unexpectedly!', true);
+    
+    if (device.autoReconnectEnabled) {    
+        updateConnectionInfo('Device disconnected unexpectedly!', true);
+    }
+    
     updateStatus('Device disconnected');
     
     // Clear the device list
@@ -2063,15 +2047,22 @@ function handleDisconnection(event) {
     // Reset variables
     characteristic = null;
     dataBuffer = '';
+  
+    // Update button states
+    document.getElementById('disconnectButton').disabled = true;
+    document.getElementById('scanButton').disabled = false;
     
-    // Attempt to reconnect if auto-reconnect is enabled
+    // Only attempt to reconnect if auto-reconnect is still enabled
     if (device.autoReconnectEnabled) {
         updateConnectionInfo('Attempting to reconnect...');
         connectToDevice(device).catch(error => {
             console.error('Auto-reconnect failed:', error);
             updateConnectionInfo('Auto-reconnect failed: ' + error.message, true);
         });
+    } else {
+        updateConnectionInfo('Device disconnected - scan to reconnect');
     }
+  
 }
 
 
@@ -2101,9 +2092,46 @@ async function scanForDevices() {
 }
 
 
+async function disconnectDevice() {
+    try {
+        if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+            // Disable auto-reconnect before disconnecting
+            bluetoothDevice.autoReconnectEnabled = false;
+            await bluetoothDevice.gatt.disconnect();
+            updateConnectionInfo('Device disconnected successfully');
+            updateStatus('Disconnected');
+            
+            // Reset variables
+            characteristic = null;
+            dataBuffer = '';
+            dataHistory = [];
+            copHistory = [];
+            
+            // Clear visualizations
+            if (heatmapInstance) {
+                heatmapInstance.setData({ data: [] });
+            }
+            clearCoPGraph();
+            
+            // Disable disconnect button and enable scan button
+            document.getElementById('disconnectButton').disabled = true;
+            document.getElementById('scanButton').disabled = false;
+            
+        } else {
+            updateConnectionInfo('No device connected');
+        }
+    } catch (error) {
+        console.error('Disconnect error:', error);
+        updateConnectionInfo('Disconnect failed: ' + error.message, true);
+    }
+}
+
 
 // Event listeners
 document.getElementById('scanButton').addEventListener('click', scanForDevices);
+// Add event listener for disconnect button
+document.getElementById('disconnectButton').addEventListener('click', disconnectDevice);
+
 
 
 document.addEventListener("DOMContentLoaded", () => {
