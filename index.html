@@ -6,7 +6,9 @@
     <title>BLE Pressure Sensor Visualization</title>  <!-- this shows up in the window's title bar -->
     
     <!--<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>  -->
-    <script src="https://cdn.plot.ly/plotly-3.0.0.min.js"></script>  <!-- Include Plotly - now have to specify the version of plotly to use -->
+    <!--  plotly-3.0.0.min.js was too new to show titles and X and Y axis labels for the way that had it before? -->
+    <script src="https://cdn.plot.ly/plotly-2.0.0.min.js"></script>  <!-- Include Plotly - now have to specify the version of plotly to use -->
+    
   
     <script src="heatmap.js"></script>  <!--  heatmap.js library included in file structure -->
     <script src="script.js" defer></script> <!-- Your custom script -->
@@ -199,14 +201,29 @@
                         <div id="heatmap"></div>
                         <canvas id="heatmap-overlay"></canvas>
                     </div>
-                    <div class="cop-and-data">
-                        <div id="cop-graph" style="width: 100%; height: 400px;"></div>
-                        <div class="raw-data-panel">
-                            <h3>Coordinates Data</h3>
-                            <div id="raw-data"></div>
-                        </div>
-                    </div>
+                  
+                  <!-- CoP Graph and Raw Data Section -->
+                  <div class="cop-and-data">
+                      <!-- CoP Mode Toggle moved inside the container -->
+                      <div class="cop-mode-toggle">
+                          <input type="radio" id="normalMode" name="copMode" value="normal" checked>
+                          <label for="normalMode">Normal</label>
+                          <input type="radio" id="deltaMode" name="copMode" value="delta">
+                          <label for="deltaMode">Delta</label>
+                      </div>
+                    
+                      <div id="cop-graph" style="width: 100%; height: 400px;"></div> 
+                      <!-- <div id="cop-graph"></div> -->
+                    
+                      <div class="raw-data-panel">                          
+                          <h3>Coordinates Data</h3>
+                          <div id="raw-data"></div>
+                      </div>
+                    
+                  </div>
+                  
                 </div>
+              
             </div>
 
             <!-- Right column -->
