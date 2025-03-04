@@ -246,8 +246,66 @@ input:checked + .slider:before {
     z-index: 2;
 }
 
+
+
+/* CoP Mode Toggle */
+/*
+.cop-mode-toggle {
+    text-align: center;
+    margin-bottom: 2px;
+}
+
+.cop-mode-toggle label {
+    display: inline-block;
+    padding: 2px 4px;
+    background-color: #f0f0f0;
+    border: 1px solid #cccccc;
+    cursor: pointer;
+}
+*/
+
+/* Update the CoP Mode Toggle styles */
+.cop-mode-toggle {
+    position: absolute;
+    top: 10px;          /* Distance from top of container */
+    left: 10px;         /* Distance from left of container */
+    z-index: 10;        /* Ensure it appears above the graph */
+    background-color: rgba(255, 255, 255, 0.9); /* Semi-transparent white background */
+    padding: 5px;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.cop-mode-toggle label {
+    display: inline-block;
+    padding: 5px 15px;
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    cursor: pointer;
+    font-size: 12px;    /* Slightly smaller font size */
+}
+
+.cop-mode-toggle label:first-of-type {
+    border-radius: 4px 0 0 4px;
+}
+
+.cop-mode-toggle label:last-of-type {
+    border-radius: 0 4px 4px 0;
+}
+
+.cop-mode-toggle input[type="radio"] {
+    display: none;
+}
+
+.cop-mode-toggle input[type="radio"]:checked + label {
+    background-color: #4CAF50;
+    color: white;
+    border-color: #4CAF50;
+}
+
 /* CoP graph and raw data display */
 .cop-and-data {
+    position: relative;  /* Add this to make absolute positioning work */
     display: flex;
     flex-direction: row;
     gap: 5px;  /* Spacing between CoP graph and raw data */
