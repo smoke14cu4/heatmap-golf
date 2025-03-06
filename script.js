@@ -8,7 +8,7 @@ const MICROCHIP_UART_SERVICE = '49535343-fe7d-4ae5-8fa9-9fafd205e455';
 const MICROCHIP_UART_TX = '49535343-1e4d-4bd9-ba61-23c647249616';
 const MICROCHIP_UART_RX = '49535343-8841-43f4-a8d4-ecbe34729bb3';
 
-const debug = 4;  //4 is for foot pressure %  //5 is for playback stuff  //6 shows recorded data  //set to 1 to allow console.log debug messages  //set to 0 to turn off
+const debug = 0;  //4 is for foot pressure %  //5 is for playback stuff  //6 shows recorded data  //set to 1 to allow console.log debug messages  //set to 0 to turn off
 
 let bluetoothDevice;
 let characteristic;
@@ -780,7 +780,8 @@ function startStanceCalibration() {
     stanceCalibrationData = [];
     isCalibrating = true;
     calibrationStartTime = Date.now();
-
+  
+  
     const countInterval = setInterval(() => {
         timeLeft = Math.max(0, Math.round((CALIBRATION_DURATION - (Date.now() - calibrationStartTime)) / 1000));
         countdownDisplay.textContent = `${timeLeft}s remaining`;
@@ -801,15 +802,32 @@ function finishCalibration() {
         console.error('No calibration data collected');
         return;
     }
+  
+    // Process each calibration frame with inversions
+    const adjustedCalibrationData = stanceCalibrationData.map(frame => 
+        frame.map(reading => ({
+            ...reading,
+            x: settings.invertX ? (settings.sensorsX - reading.x) : reading.x,
+            y: settings.invertY ? (settings.sensorsY - reading.y) : reading.y
+        }))
+    );
 
-    // Calculate overall boundaries from calibration data
-    const boundaries = calculateCalibrationBoundaries(stanceCalibrationData);
+    // Calculate boundaries from adjusted data
+    const boundaries = calculateCalibrationBoundaries(adjustedCalibrationData);
     stanceCalibrationData = boundaries; // Store only the boundaries
 
-    if (debug == 4) {
+    
+    if (debug == 7) {
         console.log('Calibration boundaries:', boundaries);
     }
+      //boundaries stucture:
+        //xRange: { min: overallMinX, max: overallMaxX, mid: xMidpoint },
+        //frontFoot: { minY: frontFootMinY, maxY: frontFootMaxY },
+        //backFoot: { minY: backFootMinY, maxY: backFootMaxY }
+  //so boundaries.frontFoot.minY, or boundaries.backFoot.maxY, or boundaries.xRange.max, or boundaries.xRange.mid
+  
 }
+
 
 function calculateCalibrationBoundaries(calibrationFrames) {
     let overallMinX = Infinity;
@@ -827,9 +845,10 @@ function calculateCalibrationBoundaries(calibrationFrames) {
         });
     });
 
-    const xMidpoint = overallMinX + (overallMaxX - overallMinX) / 2;
+    const xMidpoint = overallMinX + ((overallMaxX - overallMinX) / 2);
 
-    // Second pass: find Y boundaries for each foot
+    // Second pass: find Y boundaries for each foot  
+    
     calibrationFrames.forEach(frame => {
         frame.forEach(point => {
             if (point.x <= xMidpoint) { // Front foot
@@ -921,7 +940,7 @@ function calculatePressureDistributionPerFrame(readings) {
     // Move the existing calculation logic here
     // This is your current implementation of calculatePressureDistribution
   
-    
+    // ISSUE: The readings coming in are raw and need inversion adjustment
     // Adjust X and Y coordinates based on inversion setting
     const adjustedReadings = readings.map(reading => ({
         ...reading,
@@ -942,18 +961,23 @@ function calculatePressureDistributionPerFrame(readings) {
     // Separate front and back foot readings
     //const frontFootReadings = adjustedReadings.filter(r => r.adjustedX >= xMidpoint); // before fixing inverts
     //const backFootReadings = adjustedReadings.filter(r => r.adjustedX < xMidpoint);   // before fixing inverts
+    
+    //front foot is the left foot for a right-handed user, which means that it's lower X values 
+      //when user adjusts so they see cartesion (i.e. cartesian 0,0 is to their left and towards them)
     const frontFootReadings = adjustedReadings.filter(r => r.adjustedX <= xMidpoint);   // after fixing inverts
     const backFootReadings = adjustedReadings.filter(r => r.adjustedX > xMidpoint);     // after fixing inverts
 
-    // Calculate total pressure
+    // Calculate total pressure (sum of all activated points Z value)
     const totalPressure = adjustedReadings.reduce((sum, r) => sum + r.value, 0);
+  
+    if (debug == 4) console.log("totalPressure (sum of all Z values) = " + totalPressure);
 
     // Process front foot
-    const frontFootData = processFootData(frontFootReadings, totalPressure);
-
+    const frontFootData = processFootData(frontFootReadings, totalPressure);    
+  
     // Process back foot
-    const backFootData = processFootData(backFootReadings, totalPressure);
-
+    const backFootData = processFootData(backFootReadings, totalPressure);    
+  
     // Update display
     updatePressureDisplay('front', frontFootData);
     updatePressureDisplay('back', backFootData);
@@ -972,7 +996,7 @@ function processFootData(footReadings, totalPressure) {
     //const yMidpoint = (Math.min(...yValues) + Math.max(...yValues)) / 2;  //(min + max)/2 gives same as ((max-min)/2)+min
     const minY = Math.min(...yValues);
     const maxY = Math.max(...yValues);
-    const yMidpoint = minY + (maxY - minY) / 2;
+    const yMidpoint = minY + ((maxY - minY) / 2);
   
     //if (debug == 4) console.log("yMidpoint= " + yMidpoint + "   minY= " + minY + "   maxY= " + maxY);
 
@@ -995,17 +1019,39 @@ function processFootData(footReadings, totalPressure) {
 
 // Add the calibrated calculation method
 function calculatePressureDistributionCalibrated(readings) {
-    if (!stanceCalibrationData) return;
-
+    if (!stanceCalibrationData) return;    
+  
+    // Apply inversion settings to readings
+    const adjustedReadings = readings.map(reading => ({
+        ...reading,
+        x: settings.invertX ? (settings.sensorsX - reading.x) : reading.x,
+        y: settings.invertY ? (settings.sensorsY - reading.y) : reading.y
+    }));
+  
     const boundaries = stanceCalibrationData;
+    // The calibration boundaries were captured with inversion settings applied,
+    // so we can use them directly
     const xMidpoint = boundaries.xRange.mid;
+  
+    if (debug == 7) console.log('xMidpoint:', xMidpoint);
+  
 
     // Separate front and back foot readings using calibrated xMidpoint
-    const frontFootReadings = readings.filter(r => r.x <= xMidpoint);
-    const backFootReadings = readings.filter(r => r.x > xMidpoint);
-
+    //const frontFootReadings = readings.filter(r => r.x <= xMidpoint);  //didn't account for inversions
+    //const backFootReadings = readings.filter(r => r.x > xMidpoint);  //didn't account for inversions
+    //const frontFootReadings = adjustedReadings.filter(r => r.adjustedX <= xMidpoint);
+    //const backFootReadings = adjustedReadings.filter(r => r.adjustedX > xMidpoint);
+    const frontFootReadings = adjustedReadings.filter(r => r.x <= xMidpoint);
+    const backFootReadings = adjustedReadings.filter(r => r.x > xMidpoint);
+  
+    if (debug == 7) console.log('frontFootReadings:', frontFootReadings);
+    if (debug == 7) console.log('backFootReadings:', backFootReadings);
+    
     // Calculate total pressure
-    const totalPressure = readings.reduce((sum, r) => sum + r.value, 0);
+    //const totalPressure = readings.reduce((sum, r) => sum + r.value, 0);
+    const totalPressure = adjustedReadings.reduce((sum, r) => sum + r.value, 0);
+  
+    if (debug == 7) console.log('totalPressure:', totalPressure);
 
     // Process front foot using calibrated boundaries
     const frontFootData = processFootDataWithBoundaries(
@@ -1033,7 +1079,7 @@ function processFootDataWithBoundaries(footReadings, totalPressure, boundaries) 
     const footTotal = footReadings.reduce((sum, r) => sum + r.value, 0);
     const footPercentage = Math.round((footTotal / totalPressure) * 100);
 
-    const yMidpoint = boundaries.minY + (boundaries.maxY - boundaries.minY) / 2;
+    const yMidpoint = boundaries.minY + ((boundaries.maxY - boundaries.minY) / 2);
 
     // Separate toe and heel readings using calibrated yMidpoint
     const toeReadings = footReadings.filter(r => r.y >= yMidpoint);
@@ -1966,6 +2012,10 @@ function calculatePressureDistributionFromRecordedSwing(frame) {
 function calculatePressureDistributionFromRecordedSwing(frame) {
     if (!playbackData || playbackData.length === 0 || !frame || frame.pressure.length === 0) return;
 
+    // ISSUE: The frame.pressure data coming from playbackData 
+    // already has inversions applied during recording
+    // This means we don't need to re-apply inversions here
+  
     const method = document.querySelector('input[name="weightDistMethod"]:checked').value;
 
     if (method === 'calibrated') {
@@ -1989,14 +2039,14 @@ function calculatePressureDistributionFromRecordedSwing(frame) {
         const frontFootData = processFootDataFromRecordedSwingWithBoundaries(
             frontFootReadings,
             totalPressure,
-            boundaries.frontFoot.minY + (boundaries.frontFoot.maxY - boundaries.frontFoot.minY) / 2
+            boundaries.frontFoot.minY + ((boundaries.frontFoot.maxY - boundaries.frontFoot.minY) / 2)
         );
 
         // Process back foot using calibrated boundaries
         const backFootData = processFootDataFromRecordedSwingWithBoundaries(
             backFootReadings,
             totalPressure,
-            boundaries.backFoot.minY + (boundaries.backFoot.maxY - boundaries.backFoot.minY) / 2
+            boundaries.backFoot.minY + ((boundaries.backFoot.maxY - boundaries.backFoot.minY) / 2)
         );
 
         // Update display
@@ -2043,8 +2093,8 @@ function calculatePressureDistributionFromRecordedSwingUsingRecordedBoundaries(f
     });
 
     // Calculate midpoints for toe/heel separation for each foot
-    const frontFootYMidpoint = frontFootMinY + (frontFootMaxY - frontFootMinY) / 2;
-    const backFootYMidpoint = backFootMinY + (backFootMaxY - backFootMinY) / 2;
+    const frontFootYMidpoint = frontFootMinY + ((frontFootMaxY - frontFootMinY) / 2);
+    const backFootYMidpoint = backFootMinY + ((backFootMaxY - backFootMinY) / 2);
 
     // Process the current frame using these boundaries
     const pressureData = frame.pressure;
@@ -2088,6 +2138,9 @@ function processFootDataFromRecordedSwingWithBoundaries(footReadings, totalPress
     const footTotal = footReadings.reduce((sum, r) => sum + r.value, 0);
     const footPercentage = Math.round((footTotal / totalPressure) * 100);
 
+    // Fix: The y-coordinate comparison should account for inversion
+    // Note: footReadings already have inversion applied from recording
+  
     // Separate toe and heel readings using the established yMidpoint
     const toeReadings = footReadings.filter(r => r.y >= yMidpoint);
     const heelReadings = footReadings.filter(r => r.y < yMidpoint);
