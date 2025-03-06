@@ -8,7 +8,7 @@ const MICROCHIP_UART_SERVICE = '49535343-fe7d-4ae5-8fa9-9fafd205e455';
 const MICROCHIP_UART_TX = '49535343-1e4d-4bd9-ba61-23c647249616';
 const MICROCHIP_UART_RX = '49535343-8841-43f4-a8d4-ecbe34729bb3';
 
-const debug = 0;  //4 is for foot pressure %  //5 is for playback stuff  //6 shows recorded data  //set to 1 to allow console.log debug messages  //set to 0 to turn off
+const debug = 4;  //4 is for foot pressure %  //5 is for playback stuff  //6 shows recorded data  //set to 1 to allow console.log debug messages  //set to 0 to turn off
 
 let bluetoothDevice;
 let characteristic;
@@ -38,6 +38,13 @@ let recordedReadings = [];
 
 let copMode = 'normal'; // Default mode
 
+//Weight Distribution Calculation Method Selection and Calibration Button variables
+let stanceCalibrationData = null;
+let isCalibrating = false;
+let calibrationStartTime = null;
+const CALIBRATION_DURATION = 5000; // 5 seconds in milliseconds
+
+
 
 // Default settings
 const settings = {
@@ -61,7 +68,7 @@ const settings = {
     //minOpacity: 0,   // decreased tp 0 to try to not show so much history, even when history length set to 0  
     maxValue: 2000,
     minValue: 200,
-    copHistoryLength: 60,
+    copHistoryLength: 60,  //60 is good for controller fps of 30, so it's 2 seconds of CoP history
     matWidth: 46,          // inches
     matHeight: 22,         // inches
     sensorsX: 23,          // number of sensors in X direction
@@ -97,6 +104,7 @@ window.onload = function() {
       //if (debug == 1) console.log("updateConnectionInfo fcn run and returned"); 
     initializeCoPStats();
     initializeSwingControls();
+    initializeWeightDistributionControls();
   
     /*
     try {
@@ -146,7 +154,6 @@ window.onload = function() {
         updateConnectionInfo('Error initializing heatmap: ' + error.message, true);
     }
     */
-  
   
 };
 
@@ -278,6 +285,23 @@ function initializeCoPModeToggle() {
     });
 }
 
+
+// Add this function to initialize the new controls
+function initializeWeightDistributionControls() {
+    const calibrateButton = document.getElementById('calibrateStanceButton');
+    calibrateButton.addEventListener('click', startStanceCalibration);
+
+    // Add event listeners for method selection
+    document.getElementsByName('weightDistMethod').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            settings.weightDistMethod = e.target.value;
+            // Update both real-time and playback displays if needed
+            if (playbackData && playbackData.length > 0) {
+                showFrame(currentFrameIndex);
+            }
+        });
+    });
+}
 
 
 // Update setting values
@@ -746,6 +770,89 @@ function adjustContainerDimensions() {
 }
 
 
+// function to handle stance calibration
+function startStanceCalibration() {
+    const button = document.getElementById('calibrateStanceButton');
+    const countdownDisplay = document.getElementById('calibrationCountdown');
+    button.disabled = true;
+    
+    let timeLeft = CALIBRATION_DURATION / 1000;
+    stanceCalibrationData = [];
+    isCalibrating = true;
+    calibrationStartTime = Date.now();
+
+    const countInterval = setInterval(() => {
+        timeLeft = Math.max(0, Math.round((CALIBRATION_DURATION - (Date.now() - calibrationStartTime)) / 1000));
+        countdownDisplay.textContent = `${timeLeft}s remaining`;
+        
+        if (timeLeft <= 0) {
+            clearInterval(countInterval);
+            finishCalibration();
+            countdownDisplay.textContent = '';
+            button.disabled = false;
+        }
+    }, 100);
+}
+
+
+function finishCalibration() {
+    isCalibrating = false;
+    if (stanceCalibrationData.length === 0) {
+        console.error('No calibration data collected');
+        return;
+    }
+
+    // Calculate overall boundaries from calibration data
+    const boundaries = calculateCalibrationBoundaries(stanceCalibrationData);
+    stanceCalibrationData = boundaries; // Store only the boundaries
+
+    if (debug == 4) {
+        console.log('Calibration boundaries:', boundaries);
+    }
+}
+
+function calculateCalibrationBoundaries(calibrationFrames) {
+    let overallMinX = Infinity;
+    let overallMaxX = -Infinity;
+    let frontFootMinY = Infinity;
+    let frontFootMaxY = -Infinity;
+    let backFootMinY = Infinity;
+    let backFootMaxY = -Infinity;
+
+    // First pass: find overall X boundaries
+    calibrationFrames.forEach(frame => {
+        frame.forEach(point => {
+            overallMinX = Math.min(overallMinX, point.x);
+            overallMaxX = Math.max(overallMaxX, point.x);
+        });
+    });
+
+    const xMidpoint = overallMinX + (overallMaxX - overallMinX) / 2;
+
+    // Second pass: find Y boundaries for each foot
+    calibrationFrames.forEach(frame => {
+        frame.forEach(point => {
+            if (point.x <= xMidpoint) { // Front foot
+                frontFootMinY = Math.min(frontFootMinY, point.y);
+                frontFootMaxY = Math.max(frontFootMaxY, point.y);
+            } else { // Back foot
+                backFootMinY = Math.min(backFootMinY, point.y);
+                backFootMaxY = Math.max(backFootMaxY, point.y);
+            }
+        });
+    });
+
+    return {
+        xRange: { min: overallMinX, max: overallMaxX, mid: xMidpoint },
+        frontFoot: { minY: frontFootMinY, maxY: frontFootMaxY },
+        backFoot: { minY: backFootMinY, maxY: backFootMaxY }
+    };
+}
+
+
+/*
+//weight distribution calculation function before adding the 'calibration' option
+  //moved these calculations to a new function called calculatePressureDistributionPerFrame
 function calculatePressureDistribution(readings) {  //this is for the weight distribution stuff
     if (!readings || readings.length === 0) return;
 
@@ -785,6 +892,74 @@ function calculatePressureDistribution(readings) {  //this is for the weight dis
     updatePressureDisplay('front', frontFootData);
     updatePressureDisplay('back', backFootData);
 }
+*/
+
+
+// Modify the calculatePressureDistribution function
+function calculatePressureDistribution(readings) {
+    if (!readings || readings.length === 0) return;
+
+    const method = document.querySelector('input[name="weightDistMethod"]:checked').value;
+    
+    if (method === 'calibrated' && !stanceCalibrationData) {
+        // If calibrated method is selected but no calibration data exists,
+        // fall back to per-frame method
+        calculatePressureDistributionPerFrame(readings);
+        return;
+    }
+
+    if (method === 'calibrated') {
+        calculatePressureDistributionCalibrated(readings);
+    } else {
+        calculatePressureDistributionPerFrame(readings);
+    }
+}
+
+
+// Split the original calculation method into its own function
+function calculatePressureDistributionPerFrame(readings) {
+    // Move the existing calculation logic here
+    // This is your current implementation of calculatePressureDistribution
+  
+    
+    // Adjust X and Y coordinates based on inversion setting
+    const adjustedReadings = readings.map(reading => ({
+        ...reading,
+        adjustedX: settings.invertX ? (settings.sensorsX - reading.x) : reading.x,
+        adjustedY: settings.invertY ? (settings.sensorsY - reading.y) : reading.y      
+    }));
+  
+    //if (debug == 4) console.log("adjustedReadings= " + adjustedReadings);
+
+    // Find min and max X values to determine front/back split
+    const xValues = adjustedReadings.map(r => r.adjustedX);
+    const minX = Math.min(...xValues);
+    const maxX = Math.max(...xValues);
+    const xMidpoint = minX + (maxX - minX) / 2;
+  
+    if (debug == 4) console.log("xMidpoint= " + xMidpoint + "   minX= " + minX + "   maxX= " + maxX);
+
+    // Separate front and back foot readings
+    //const frontFootReadings = adjustedReadings.filter(r => r.adjustedX >= xMidpoint); // before fixing inverts
+    //const backFootReadings = adjustedReadings.filter(r => r.adjustedX < xMidpoint);   // before fixing inverts
+    const frontFootReadings = adjustedReadings.filter(r => r.adjustedX <= xMidpoint);   // after fixing inverts
+    const backFootReadings = adjustedReadings.filter(r => r.adjustedX > xMidpoint);     // after fixing inverts
+
+    // Calculate total pressure
+    const totalPressure = adjustedReadings.reduce((sum, r) => sum + r.value, 0);
+
+    // Process front foot
+    const frontFootData = processFootData(frontFootReadings, totalPressure);
+
+    // Process back foot
+    const backFootData = processFootData(backFootReadings, totalPressure);
+
+    // Update display
+    updatePressureDisplay('front', frontFootData);
+    updatePressureDisplay('back', backFootData);
+  
+}
+
 
 function processFootData(footReadings, totalPressure) {
     if (footReadings.length === 0) return { total: 0, toe: 0, heel: 0 };
@@ -799,7 +974,7 @@ function processFootData(footReadings, totalPressure) {
     const maxY = Math.max(...yValues);
     const yMidpoint = minY + (maxY - minY) / 2;
   
-    if (debug == 4) console.log("yMidpoint= " + yMidpoint + "   minY= " + minY + "   maxY= " + maxY);
+    //if (debug == 4) console.log("yMidpoint= " + yMidpoint + "   minY= " + minY + "   maxY= " + maxY);
 
     const toeReadings = footReadings.filter(r => r.adjustedY >= yMidpoint);  // <= xMidpoint
     const heelReadings = footReadings.filter(r => r.adjustedY < yMidpoint);  //  > xMidpoint
@@ -816,6 +991,68 @@ function processFootData(footReadings, totalPressure) {
         heel: heelPercentage
     };
 }
+
+
+// Add the calibrated calculation method
+function calculatePressureDistributionCalibrated(readings) {
+    if (!stanceCalibrationData) return;
+
+    const boundaries = stanceCalibrationData;
+    const xMidpoint = boundaries.xRange.mid;
+
+    // Separate front and back foot readings using calibrated xMidpoint
+    const frontFootReadings = readings.filter(r => r.x <= xMidpoint);
+    const backFootReadings = readings.filter(r => r.x > xMidpoint);
+
+    // Calculate total pressure
+    const totalPressure = readings.reduce((sum, r) => sum + r.value, 0);
+
+    // Process front foot using calibrated boundaries
+    const frontFootData = processFootDataWithBoundaries(
+        frontFootReadings,
+        totalPressure,
+        boundaries.frontFoot
+    );
+
+    // Process back foot using calibrated boundaries
+    const backFootData = processFootDataWithBoundaries(
+        backFootReadings,
+        totalPressure,
+        boundaries.backFoot
+    );
+
+    // Update display
+    updatePressureDisplay('front', frontFootData);
+    updatePressureDisplay('back', backFootData);
+}
+
+
+function processFootDataWithBoundaries(footReadings, totalPressure, boundaries) {
+    if (footReadings.length === 0) return { total: 0, toe: 0, heel: 0 };
+
+    const footTotal = footReadings.reduce((sum, r) => sum + r.value, 0);
+    const footPercentage = Math.round((footTotal / totalPressure) * 100);
+
+    const yMidpoint = boundaries.minY + (boundaries.maxY - boundaries.minY) / 2;
+
+    // Separate toe and heel readings using calibrated yMidpoint
+    const toeReadings = footReadings.filter(r => r.y >= yMidpoint);
+    const heelReadings = footReadings.filter(r => r.y < yMidpoint);
+
+    const toeTotal = toeReadings.reduce((sum, r) => sum + r.value, 0);
+    const heelTotal = heelReadings.reduce((sum, r) => sum + r.value, 0);
+
+    const toePercentage = Math.round((toeTotal / footTotal) * 100) || 0;
+    const heelPercentage = Math.round((heelTotal / footTotal) * 100) || 0;
+
+    return {
+        total: footPercentage,
+        toe: toePercentage,
+        heel: heelPercentage
+    };
+}
+
+
 
 function updatePressureDisplay(foot, data) {
     document.getElementById(`${foot}-percentage`).textContent = data.total;
@@ -1569,14 +1806,15 @@ function updateCoPGraphWithRecordedSwing(frame, frameIndex) {
 }
 
 
-
+/*
+//calculating with just the per-frame X and Y bounds for heel/toe and front foot/back foot
 function calculatePressureDistributionFromRecordedSwing(frame) {  //this is for the weight distribution stuff
     //if (!readings || readings.length === 0) return;
     if (!frame || frame.pressure.length === 0) return;
   
     const pressureData = frame.pressure;    
   
-    if (debug == 5) console.log("pressureData= ", pressureData);
+    if (debug == 4) console.log("pressureData= ", pressureData);
 
     // Find min and max X values to determine front/back split
     const xValues = pressureData.map(r => r.x);
@@ -1584,7 +1822,7 @@ function calculatePressureDistributionFromRecordedSwing(frame) {  //this is for 
     const maxX = Math.max(...xValues);
     const xMidpoint = minX + (maxX - minX) / 2;
   
-    if (debug == 5) console.log("xMidpoint= " + xMidpoint + "   minX= " + minX + "   maxX= " + maxX);
+    if (debug == 4) console.log("xMidpoint= " + xMidpoint + "   minX= " + minX + "   maxX= " + maxX);
 
     // Separate front and back foot readings
     //const frontFootReadings = adjustedReadings.filter(r => r.adjustedX >= xMidpoint); // before fixing inverts
@@ -1605,7 +1843,11 @@ function calculatePressureDistributionFromRecordedSwing(frame) {  //this is for 
     updatePressureDisplayFromRecordedSwing('front', frontFootData);
     updatePressureDisplayFromRecordedSwing('back', backFootData);
 }
+*/
 
+
+/*
+//calculating with just the per-frame X and Y bounds for heel/toe and front foot/back foot
 function processFootDataFromRecordedSwing(footReadings, totalPressure) {
     if (footReadings.length === 0) return { total: 0, toe: 0, heel: 0 };
 
@@ -1620,7 +1862,7 @@ function processFootDataFromRecordedSwing(footReadings, totalPressure) {
     const maxY = Math.max(...yValues);
     const yMidpoint = minY + (maxY - minY) / 2;
   
-    if (debug == 5) console.log("yMidpoint= " + yMidpoint + "   minY= " + minY + "   maxY= " + maxY);
+    if (debug == 4) console.log("yMidpoint= " + yMidpoint + "   minY= " + minY + "   maxY= " + maxY);
 
     //const toeReadings = footReadings.filter(r => r.adjustedY >= yMidpoint);  // <= xMidpoint
     //const heelReadings = footReadings.filter(r => r.adjustedY < yMidpoint);  //  > xMidpoint
@@ -1639,13 +1881,237 @@ function processFootDataFromRecordedSwing(footReadings, totalPressure) {
         heel: heelPercentage
     };
 }
+*/
+
+
+/*
+//this is now the function calculatePressureDistributionFromRecordedSwingUsingRecordedBoundaries below
+//updated for whole recording overall x and y bounds for heel/toe and front/back foot
+function calculatePressureDistributionFromRecordedSwing(frame) {
+    if (!playbackData || playbackData.length === 0 || !frame || frame.pressure.length === 0) return;
+
+    // First, analyze all frames to find overall boundaries
+    let overallMinX = Infinity;
+    let overallMaxX = -Infinity;
+    let frontFootMinY = Infinity;
+    let frontFootMaxY = -Infinity;
+    let backFootMinY = Infinity;
+    let backFootMaxY = -Infinity;
+
+    // Find overall X boundaries and initial foot separation point
+    playbackData.forEach(frameData => {
+        frameData.pressure.forEach(point => {
+            overallMinX = Math.min(overallMinX, point.x);
+            overallMaxX = Math.max(overallMaxX, point.x);
+        });
+    });
+
+    // Calculate the midpoint for front/back foot separation
+    const xMidpoint = overallMinX + (overallMaxX - overallMinX) / 2;
+
+    // Now find Y boundaries for each foot across all frames
+    playbackData.forEach(frameData => {
+        frameData.pressure.forEach(point => {
+            if (point.x <= xMidpoint) { // Front foot
+                frontFootMinY = Math.min(frontFootMinY, point.y);
+                frontFootMaxY = Math.max(frontFootMaxY, point.y);
+            } else { // Back foot
+                backFootMinY = Math.min(backFootMinY, point.y);
+                backFootMaxY = Math.max(backFootMaxY, point.y);
+            }
+        });
+    });
+
+    // Calculate midpoints for toe/heel separation for each foot
+    const frontFootYMidpoint = frontFootMinY + (frontFootMaxY - frontFootMinY) / 2;
+    const backFootYMidpoint = backFootMinY + (backFootMaxY - backFootMinY) / 2;
+
+    // Now process the current frame using these established boundaries
+    const pressureData = frame.pressure;
+    const totalPressure = pressureData.reduce((sum, r) => sum + r.value, 0);
+
+    // Separate front and back foot readings using the established xMidpoint
+    const frontFootReadings = pressureData.filter(r => r.x <= xMidpoint);
+    const backFootReadings = pressureData.filter(r => r.x > xMidpoint);
+
+    // Process front foot using established frontFootYMidpoint
+    const frontFootData = processFootDataFromRecordedSwingWithBoundaries(
+        frontFootReadings,
+        totalPressure,
+        frontFootYMidpoint
+    );
+
+    // Process back foot using established backFootYMidpoint
+    const backFootData = processFootDataFromRecordedSwingWithBoundaries(
+        backFootReadings,
+        totalPressure,
+        backFootYMidpoint
+    );
+
+    // Update display
+    updatePressureDisplayFromRecordedSwing('front', frontFootData);
+    updatePressureDisplayFromRecordedSwing('back', backFootData);
+
+    if (debug == 5) {
+        console.log("Overall boundaries:", {
+            xRange: { min: overallMinX, max: overallMaxX, mid: xMidpoint },
+            frontFoot: { minY: frontFootMinY, maxY: frontFootMaxY, midY: frontFootYMidpoint },
+            backFoot: { minY: backFootMinY, maxY: backFootMaxY, midY: backFootYMidpoint }
+        });
+    }
+}
+*/
+
+
+function calculatePressureDistributionFromRecordedSwing(frame) {
+    if (!playbackData || playbackData.length === 0 || !frame || frame.pressure.length === 0) return;
+
+    const method = document.querySelector('input[name="weightDistMethod"]:checked').value;
+
+    if (method === 'calibrated') {
+        // Use stance calibration boundaries if available
+        if (!stanceCalibrationData) {
+            console.warn('Stance calibration data not available, falling back to per-frame method');
+            calculatePressureDistributionFromRecordedSwingUsingRecordedBoundaries(frame);
+            return;
+        }
+
+        // Use the stance calibration boundaries
+        const boundaries = stanceCalibrationData;
+        const pressureData = frame.pressure;
+        const totalPressure = pressureData.reduce((sum, r) => sum + r.value, 0);
+
+        // Separate front and back foot readings using calibrated xMidpoint
+        const frontFootReadings = pressureData.filter(r => r.x <= boundaries.xRange.mid);
+        const backFootReadings = pressureData.filter(r => r.x > boundaries.xRange.mid);
+
+        // Process front foot using calibrated boundaries
+        const frontFootData = processFootDataFromRecordedSwingWithBoundaries(
+            frontFootReadings,
+            totalPressure,
+            boundaries.frontFoot.minY + (boundaries.frontFoot.maxY - boundaries.frontFoot.minY) / 2
+        );
+
+        // Process back foot using calibrated boundaries
+        const backFootData = processFootDataFromRecordedSwingWithBoundaries(
+            backFootReadings,
+            totalPressure,
+            boundaries.backFoot.minY + (boundaries.backFoot.maxY - boundaries.backFoot.minY) / 2
+        );
+
+        // Update display
+        updatePressureDisplayFromRecordedSwing('front', frontFootData);
+        updatePressureDisplayFromRecordedSwing('back', backFootData);
+    } else {
+        // Use boundaries calculated from the entire recording
+        calculatePressureDistributionFromRecordedSwingUsingRecordedBoundaries(frame);
+    }
+}
+
+
+function calculatePressureDistributionFromRecordedSwingUsingRecordedBoundaries(frame) {
+    // Find overall boundaries from the entire recording
+    let overallMinX = Infinity;
+    let overallMaxX = -Infinity;
+    let frontFootMinY = Infinity;
+    let frontFootMaxY = -Infinity;
+    let backFootMinY = Infinity;
+    let backFootMaxY = -Infinity;
+
+    // Find overall X boundaries and initial foot separation point
+    playbackData.forEach(frameData => {
+        frameData.pressure.forEach(point => {
+            overallMinX = Math.min(overallMinX, point.x);
+            overallMaxX = Math.max(overallMaxX, point.x);
+        });
+    });
+
+    // Calculate the midpoint for front/back foot separation
+    const xMidpoint = overallMinX + (overallMaxX - overallMinX) / 2;
+
+    // Now find Y boundaries for each foot across all frames
+    playbackData.forEach(frameData => {
+        frameData.pressure.forEach(point => {
+            if (point.x <= xMidpoint) { // Front foot
+                frontFootMinY = Math.min(frontFootMinY, point.y);
+                frontFootMaxY = Math.max(frontFootMaxY, point.y);
+            } else { // Back foot
+                backFootMinY = Math.min(backFootMinY, point.y);
+                backFootMaxY = Math.max(backFootMaxY, point.y);
+            }
+        });
+    });
+
+    // Calculate midpoints for toe/heel separation for each foot
+    const frontFootYMidpoint = frontFootMinY + (frontFootMaxY - frontFootMinY) / 2;
+    const backFootYMidpoint = backFootMinY + (backFootMaxY - backFootMinY) / 2;
+
+    // Process the current frame using these boundaries
+    const pressureData = frame.pressure;
+    const totalPressure = pressureData.reduce((sum, r) => sum + r.value, 0);
+
+    // Separate front and back foot readings
+    const frontFootReadings = pressureData.filter(r => r.x <= xMidpoint);
+    const backFootReadings = pressureData.filter(r => r.x > xMidpoint);
+
+    // Process each foot
+    const frontFootData = processFootDataFromRecordedSwingWithBoundaries(
+        frontFootReadings,
+        totalPressure,
+        frontFootYMidpoint
+    );
+
+    const backFootData = processFootDataFromRecordedSwingWithBoundaries(
+        backFootReadings,
+        totalPressure,
+        backFootYMidpoint
+    );
+
+    // Update display
+    updatePressureDisplayFromRecordedSwing('front', frontFootData);
+    updatePressureDisplayFromRecordedSwing('back', backFootData);
+  
+    if (debug == 4) {
+        console.log("Overall boundaries:", {
+            xRange: { min: overallMinX, max: overallMaxX, mid: xMidpoint },
+            frontFoot: { minY: frontFootMinY, maxY: frontFootMaxY, midY: frontFootYMidpoint },
+            backFoot: { minY: backFootMinY, maxY: backFootMaxY, midY: backFootYMidpoint }
+        });
+    }
+  
+}
+
+
+function processFootDataFromRecordedSwingWithBoundaries(footReadings, totalPressure, yMidpoint) {
+    if (footReadings.length === 0) return { total: 0, toe: 0, heel: 0 };
+
+    const footTotal = footReadings.reduce((sum, r) => sum + r.value, 0);
+    const footPercentage = Math.round((footTotal / totalPressure) * 100);
+
+    // Separate toe and heel readings using the established yMidpoint
+    const toeReadings = footReadings.filter(r => r.y >= yMidpoint);
+    const heelReadings = footReadings.filter(r => r.y < yMidpoint);
+
+    // Calculate toe and heel percentages relative to this foot's total pressure
+    const toeTotal = toeReadings.reduce((sum, r) => sum + r.value, 0);
+    const heelTotal = heelReadings.reduce((sum, r) => sum + r.value, 0);
+
+    const toePercentage = Math.round((toeTotal / footTotal) * 100) || 0;
+    const heelPercentage = Math.round((heelTotal / footTotal) * 100) || 0;
+
+    return {
+        total: footPercentage,
+        toe: toePercentage,
+        heel: heelPercentage
+    };
+}
+
 
 function updatePressureDisplayFromRecordedSwing(foot, data) {
     document.getElementById(`${foot}-percentage`).textContent = data.total;
     document.getElementById(`${foot}-toe-percentage`).textContent = `Toe: ${data.toe}%`;
     document.getElementById(`${foot}-heel-percentage`).textContent = `Heel: ${data.heel}%`;
 }
-
 
 
 function updateRawDataWithRecordedSwing(frame) {
@@ -1665,7 +2131,6 @@ function updateRawDataWithRecordedSwing(frame) {
     }
   
 }
-
 
 
 function togglePlay() {
@@ -1787,6 +2252,17 @@ function processFrame(frame) {
     
     // Only update if we have readings
     if (readings.length > 0) {
+      
+        // Add calibration data collection here
+        if (isCalibrating) {
+            stanceCalibrationData.push([...readings]); // Store a copy of the readings
+            
+            // Optional: Check if calibration time is exceeded here
+            if (Date.now() - calibrationStartTime >= CALIBRATION_DURATION) {
+                finishCalibration();
+            }
+        }
+      
         // Add to history
         dataHistory.push({
             timestamp: lastDataTimestamp,
@@ -1813,6 +2289,14 @@ function processFrame(frame) {
             if (debug == 6) console.log("copHistory: ", copHistory);
           
         }
+      
+      
+        //added this above instead, along with the checking of the calibration time
+        // Add this near where you process the frame  
+          //this stores the current readings when doing Stance Calibration      
+        //if (isCalibrating) {
+        //    stanceCalibrationData.push([...readings]); // Store a copy of the readings
+        //}
       
       
         updateHeatmapWithHistory();
@@ -2170,3 +2654,4 @@ window.addEventListener('resize', debounce(() => {
 }, 250));
 
 
+//end of code
