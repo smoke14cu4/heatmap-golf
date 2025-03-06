@@ -346,6 +346,44 @@ input:checked + .slider:before {
     line-height: 1.5;
 }
 
+/* Weight Distribution Calculation Method Selection and Calibration Button */
+.weight-distribution-controls {
+    margin-bottom: 15px;
+    padding: 10px;
+    background-color: #f8f8f8;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.method-selector {
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+.method-selector input[type="radio"] {
+    margin-right: 5px;
+}
+
+.calibrate-button {
+    width: 100%;
+    padding: 10px;
+    background-color: #2196F3;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-bottom: 5px;
+}
+
+.calibrate-button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+
 /* Left vs Right and toe vs heel foot pressure distribution */
 .pressure-title {
     font-weight: bold;
