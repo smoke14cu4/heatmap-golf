@@ -228,6 +228,19 @@
 
             <!-- Right column -->
             <div class="right-column">
+                
+                <!-- Add this just before the pressure-distribution div -->
+                <div class="weight-distribution-controls">
+                    <div class="method-selector">
+                        <input type="radio" id="perFrameMethod" name="weightDistMethod" value="perFrame" checked>
+                        <label for="perFrameMethod">Per-Frame Method</label>
+                        <input type="radio" id="calibratedMethod" name="weightDistMethod" value="calibrated">
+                        <label for="calibratedMethod">Stance-Calibrated Method</label>
+                    </div>
+                    <button id="calibrateStanceButton" class="calibrate-button">Calibrate Stance Position - 5s Recording</button>
+                    <div id="calibrationCountdown" class="countdown"></div>
+                </div>
+                              
                 <div id="pressure-distribution" class="info-panel">
                     <!-- Weight Distribution content -->                    
                     <div class="pressure-title">Weight Distribution</div>
