@@ -645,7 +645,7 @@ const debouncedUpdateHeatmap = debounce((dataHistory, copHistory, settings) => {
     }
     overlayCanvas.width = container.offsetWidth;
     overlayCanvas.height = container.offsetHeight;
-
+    
     // Draw grid and CoP on overlay canvas
     const ctx = overlayCanvas.getContext('2d');
     ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
@@ -2368,6 +2368,12 @@ function processFrame(frame) {
     myClearTimeout = setTimeout(() => {
         dataHistory = [];
         heatmapInstance.setData({ data: [] });
+      
+        //clear the CoP trace drawn on top of the heatmap
+        let overlayCanvas = document.getElementById('heatmap-overlay');
+        const ctx = overlayCanvas.getContext('2d');
+        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+      
         clearCoPGraph(); // Clear the CoP graph
         updateConnectionInfo('No data received for ' + (settings.clearTime / 1000) + ' seconds - display cleared');
     }, settings.clearTime);
@@ -2648,6 +2654,12 @@ async function disconnectDevice() {
             if (heatmapInstance) {
                 heatmapInstance.setData({ data: [] });
             }
+          
+            //clear the CoP trace drawn on top of the heatmap
+            let overlayCanvas = document.getElementById('heatmap-overlay');
+            const ctx = overlayCanvas.getContext('2d');
+            ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+          
             clearCoPGraph();
             
             // Disable disconnect button and enable scan button
