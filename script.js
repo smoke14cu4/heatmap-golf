@@ -8,7 +8,12 @@ const MICROCHIP_UART_SERVICE = '49535343-fe7d-4ae5-8fa9-9fafd205e455';
 const MICROCHIP_UART_TX = '49535343-1e4d-4bd9-ba61-23c647249616';
 const MICROCHIP_UART_RX = '49535343-8841-43f4-a8d4-ecbe34729bb3';
 
-const debug = 0;  //4 is for foot pressure %  //5 is for playback stuff  //6 shows recorded data  //set to 1 to allow console.log debug messages  //set to 0 to turn off
+const debug = 7;  //4 is for foot pressure %  //5 is for playback stuff  //6 shows recorded data  //set to 1 to allow console.log debug messages  //set to 0 to turn off
+
+let linearFit = false;  //set to true to use linear fit for weight calcs  //set to false to use power fit
+
+//let useMinThreshold = false;  //set to true to use a minimum threshold for weight calcs and CoP display  //set to false to disable this
+//let minThreshold = 1000;  //min threshold below which to ignore z readings for weight dist calcs and CoP calcs
 
 let bluetoothDevice;
 let characteristic;
@@ -42,7 +47,7 @@ let copMode = 'normal'; // Default mode
 let stanceCalibrationData = null;
 let isCalibrating = false;
 let calibrationStartTime = null;
-const CALIBRATION_DURATION = 5000; // 5 seconds in milliseconds
+const CALIBRATION_DURATION = 8000; // 8 seconds in milliseconds
 
 
 
@@ -76,7 +81,7 @@ const settings = {
     invertX: true,        // invert X axis
     invertY: false,         // invert Y axis
     
-    copTriggerThreshold: 0.5,  // inches - minimum movement to start recording
+    copTriggerThreshold: 0.1,  // inches - minimum movement to start recording  //0.5 was too much (started recording late)  //try 0.1
     //inchesPerSensorX: settings.matWidth / settings.sensorsX,
     //inchesPerSensorY: settings.matHeight / settings.sensorsY
     swingDuration: 3.0,        // seconds
@@ -563,6 +568,8 @@ function updateCoPGraph() {
 //updated to help prevent the heatmap not rendering correctly  //creates seperate overlay canvases
 // Create a debounced version of the update function
 const debouncedUpdateHeatmap = debounce((dataHistory, copHistory, settings) => {
+//function debouncedUpdateHeatmap(dataHistory, copHistory, settings) {
+//function updateHeatmapWithHistory() {
     if (!heatmapInstance || dataHistory.length === 0) return;
 
     //const now = Date.now();  // timestamp since epoch in ms
@@ -723,8 +730,9 @@ const debouncedUpdateHeatmap = debounce((dataHistory, copHistory, settings) => {
         ctx.arc(x, y, 4, 0, Math.PI * 2);
         ctx.fill();
     }
+//}
   
-}, 16);  //50 ms (approx 20 fps) // 16ms debounce time (approximately 60fps)  
+}, 16 );  //50 ms (approx 20 fps) // 16ms debounce time (approximately 60fps)  
           //16 works with fixed heatmap container dimension checking
 
 // Replace your existing updateHeatmapWithHistory function with this wrapper
@@ -784,7 +792,8 @@ function startStanceCalibration() {
   
     const countInterval = setInterval(() => {
         timeLeft = Math.max(0, Math.round((CALIBRATION_DURATION - (Date.now() - calibrationStartTime)) / 1000));
-        countdownDisplay.textContent = `${timeLeft}s remaining`;
+        //countdownDisplay.textContent = `${timeLeft}s remaining`;
+        countdownDisplay.textContent = `${timeLeft}s remain - Rock left to right, heel to toe`;        
         
         if (timeLeft <= 0) {
             clearInterval(countInterval);
@@ -919,9 +928,8 @@ function calculatePressureDistribution(readings) {  //this is for the weight dis
 function zValueToWeight(zValue) {
     // Using the given equation: z = 1390.2 * x^0.1549  //this was taken from using water bucket to calibrate x12y6 of Golf-T-2000
     // We need to solve for x (weight): x = (z/1390.2)^(1/0.1549)
-    return Math.pow(zValue / 1390.2, 1 / 0.1549);
+    return Math.pow((zValue / 1390.2), (1 / 0.1549));
 }
-
 
 // Modify the calculatePressureDistribution function
 function calculatePressureDistribution(readings) {
@@ -943,57 +951,6 @@ function calculatePressureDistribution(readings) {
     }
 }
 
-/*
-//for using linear relationship between weight and Z value
-// Split the original calculation method into its own function
-function calculatePressureDistributionPerFrame(readings) {
-    // Move the existing calculation logic here
-    // This is your current implementation of calculatePressureDistribution
-  
-    // ISSUE: The readings coming in are raw and need inversion adjustment
-    // Adjust X and Y coordinates based on inversion setting
-    const adjustedReadings = readings.map(reading => ({
-        ...reading,
-        adjustedX: settings.invertX ? (settings.sensorsX - reading.x) : reading.x,
-        adjustedY: settings.invertY ? (settings.sensorsY - reading.y) : reading.y      
-    }));
-  
-    //if (debug == 4) console.log("adjustedReadings= " + adjustedReadings);
-
-    // Find min and max X values to determine front/back split
-    const xValues = adjustedReadings.map(r => r.adjustedX);
-    const minX = Math.min(...xValues);
-    const maxX = Math.max(...xValues);
-    const xMidpoint = minX + (maxX - minX) / 2;
-  
-    if (debug == 4) console.log("xMidpoint= " + xMidpoint + "   minX= " + minX + "   maxX= " + maxX);
-
-    // Separate front and back foot readings
-    //const frontFootReadings = adjustedReadings.filter(r => r.adjustedX >= xMidpoint); // before fixing inverts
-    //const backFootReadings = adjustedReadings.filter(r => r.adjustedX < xMidpoint);   // before fixing inverts
-    
-    //front foot is the left foot for a right-handed user, which means that it's lower X values 
-      //when user adjusts so they see cartesion (i.e. cartesian 0,0 is to their left and towards them)
-    const frontFootReadings = adjustedReadings.filter(r => r.adjustedX <= xMidpoint);   // after fixing inverts
-    const backFootReadings = adjustedReadings.filter(r => r.adjustedX > xMidpoint);     // after fixing inverts
-
-    // Calculate total pressure (sum of all activated points Z value)
-    const totalPressure = adjustedReadings.reduce((sum, r) => sum + r.value, 0);
-  
-    if (debug == 4) console.log("totalPressure (sum of all Z values) = " + totalPressure);
-
-    // Process front foot
-    const frontFootData = processFootData(frontFootReadings, totalPressure);    
-  
-    // Process back foot
-    const backFootData = processFootData(backFootReadings, totalPressure);    
-  
-    // Update display
-    updatePressureDisplay('front', frontFootData);
-    updatePressureDisplay('back', backFootData);
-  
-}
-*/
 
 //for using power fit relationship:
 function calculatePressureDistributionPerFrame(readings) {
@@ -1010,46 +967,40 @@ function calculatePressureDistributionPerFrame(readings) {
     const maxX = Math.max(...xValues);
     const xMidpoint = minX + (maxX - minX) / 2;
 
-    if (debug == 4) console.log("xMidpoint= " + xMidpoint + "   minX= " + minX + "   maxX= " + maxX);
-
+    if (debug == 4) console.log("xMidpoint= " + xMidpoint + "   minX= " + minX + "   maxX= " + maxX);  
+    
     // Separate front and back foot readings
     const frontFootReadings = adjustedReadings.filter(r => r.adjustedX <= xMidpoint);
     const backFootReadings = adjustedReadings.filter(r => r.adjustedX > xMidpoint);
-
-    // Calculate total weight instead of total pressure
-    const totalWeight = readings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
-
-    // Process front foot
-    const frontFootData = processFootData(frontFootReadings, totalWeight);    
-
-    // Process back foot
-    const backFootData = processFootData(backFootReadings, totalWeight);    
-
-    // Update display
-    updatePressureDisplay('front', frontFootData);
-    updatePressureDisplay('back', backFootData);
+  
+    if (linearFit) {
+        //for linear fit
+        // Calculate total pressure (sum of all activated points Z value)
+        const totalPressure = adjustedReadings.reduce((sum, r) => sum + r.value, 0);
+        const frontFootData = processFootData(frontFootReadings, totalPressure);
+        const backFootData = processFootData(backFootReadings, totalPressure);    
+        if (debug == 4) console.log("totalPressure (sum of all Z values) = " + totalPressure);
+        // Update display
+        updatePressureDisplay('front', frontFootData);    
+        updatePressureDisplay('back', backFootData);      
+    }
+    else {
+        //for power fit:
+        // Calculate total weight instead of total pressure
+        const totalWeight = readings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);  
+        const frontFootData = processFootData(frontFootReadings, totalWeight);
+        const backFootData = processFootData(backFootReadings, totalWeight);    
+        if (debug == 4) console.log("totalWeight (sum of all Z values (converted to weight)) = " + totalWeight);
+        // Update display
+        updatePressureDisplay('front', frontFootData);    
+        updatePressureDisplay('back', backFootData);
+    }
+  
 }
 
 
 function processFootData(footReadings, totalPressure) {
     if (footReadings.length === 0) return { total: 0, toe: 0, heel: 0 };
-
-    // Convert z-values to weights
-    const footWeights = footReadings.map(r => ({
-        ...r,
-        weight: zValueToWeight(r.value)
-    }));
-    
-    //for linear relationship:
-    //const footTotal = footReadings.reduce((sum, r) => sum + r.value, 0);
-    //const footPercentage = Math.round((footTotal / totalPressure) * 100);
-  
-    // Calculate total weight instead of pressure  ...  //for power relationship:  
-    const totalWeight = footWeights.reduce((sum, r) => sum + r.weight, 0);
-    //updated the calc pressure dist functions to send total weight which is already converted from raw z values to weight with the power fit eqn.
-    //const allTotalWeight = zValueToWeight(totalPressure); // Convert total pressure to weight
-    const allTotalWeight = totalPressure; //already converted from raw z values to weight in the calling function
-    const footPercentage = Math.round((totalWeight / allTotalWeight) * 100);
   
     // Find toe/heel split based on this foot's data
     const yValues = footReadings.map(r => r.adjustedY);
@@ -1059,31 +1010,50 @@ function processFootData(footReadings, totalPressure) {
     const yMidpoint = minY + ((maxY - minY) / 2);
   
     //if (debug == 4) console.log("yMidpoint= " + yMidpoint + "   minY= " + minY + "   maxY= " + maxY);
-
-    //for linear relationship:  
-    //const toeReadings = footReadings.filter(r => r.adjustedY >= yMidpoint);  // <= xMidpoint
-    //const heelReadings = footReadings.filter(r => r.adjustedY < yMidpoint);  //  > xMidpoint
   
-    //for power relationship:  
-    const toeReadings = footWeights.filter(r => r.adjustedY >= yMidpoint);
-    const heelReadings = footWeights.filter(r => r.adjustedY < yMidpoint);
+    let footPercentage = 0;
+    let toePercentage = 0;
+    let heelPercentage = 0;
+    
+    if (linearFit) {
+        //for linear relationship:  
+        const footTotal = footReadings.reduce((sum, r) => sum + r.value, 0);
+        footPercentage = Math.round((footTotal / totalPressure) * 100);
+      
+        const toeReadings = footReadings.filter(r => r.adjustedY >= yMidpoint);  // <= xMidpoint
+        const heelReadings = footReadings.filter(r => r.adjustedY < yMidpoint);  //  > xMidpoint
+      
+        const toeTotal = toeReadings.reduce((sum, r) => sum + r.value, 0);
+        const heelTotal = heelReadings.reduce((sum, r) => sum + r.value, 0);
+      
+        toePercentage = Math.round((toeTotal / footTotal) * 100);
+        heelPercentage = Math.round((heelTotal / footTotal) * 100);
+    }  
+    else { //for power relationship:  
+      
+        // Convert z-values to weights
+        const footWeights = footReadings.map(r => ({
+            ...r,
+            weight: zValueToWeight(r.value)
+        }));
+      
+        // Calculate total weight instead of pressure  ...  //for power relationship:  
+        const totalWeight = footWeights.reduce((sum, r) => sum + r.weight, 0);
+        //updated the calc pressure dist functions to send total weight which is already converted from raw z values to weight with the power fit eqn.
+        //const allTotalWeight = zValueToWeight(totalPressure); // Convert total pressure to weight
+        const allTotalWeight = totalPressure; //already converted from raw z values to weight in the calling function
+        footPercentage = Math.round((totalWeight / allTotalWeight) * 100);
+        
+        const toeReadings = footWeights.filter(r => r.adjustedY >= yMidpoint);
+        const heelReadings = footWeights.filter(r => r.adjustedY < yMidpoint);
 
-    //for linear relationship:
-    //const toeTotal = toeReadings.reduce((sum, r) => sum + r.value, 0);
-    //const heelTotal = heelReadings.reduce((sum, r) => sum + r.value, 0);
-    
-    //for power relationship:  
-    const toeWeight = toeReadings.reduce((sum, r) => sum + r.weight, 0);
-    const heelWeight = heelReadings.reduce((sum, r) => sum + r.weight, 0);
-    
-    //for linear relationship:
-    //const toePercentage = Math.round((toeTotal / footTotal) * 100);
-    //const heelPercentage = Math.round((heelTotal / footTotal) * 100);
+        const toeWeight = toeReadings.reduce((sum, r) => sum + r.weight, 0);
+        const heelWeight = heelReadings.reduce((sum, r) => sum + r.weight, 0);
+
+        toePercentage = Math.round((toeWeight / totalWeight) * 100);
+        heelPercentage = Math.round((heelWeight / totalWeight) * 100);
+    }
   
-    //for power relationship:  
-    const toePercentage = Math.round((toeWeight / totalWeight) * 100);
-    const heelPercentage = Math.round((heelWeight / totalWeight) * 100);
-
     return {
         total: footPercentage,
         toe: toePercentage,
@@ -1091,64 +1061,6 @@ function processFootData(footReadings, totalPressure) {
     };
 }
 
-
-/*
-//for linear relationship between weight and z value
-// Add the calibrated calculation method
-function calculatePressureDistributionCalibrated(readings) {
-    if (!stanceCalibrationData) return;    
-  
-    // Apply inversion settings to readings
-    const adjustedReadings = readings.map(reading => ({
-        ...reading,
-        x: settings.invertX ? (settings.sensorsX - reading.x) : reading.x,
-        y: settings.invertY ? (settings.sensorsY - reading.y) : reading.y
-    }));
-  
-    const boundaries = stanceCalibrationData;
-    // The calibration boundaries were captured with inversion settings applied,
-    // so we can use them directly
-    const xMidpoint = boundaries.xRange.mid;
-  
-    if (debug == 7) console.log('xMidpoint:', xMidpoint);
-  
-
-    // Separate front and back foot readings using calibrated xMidpoint
-    //const frontFootReadings = readings.filter(r => r.x <= xMidpoint);  //didn't account for inversions
-    //const backFootReadings = readings.filter(r => r.x > xMidpoint);  //didn't account for inversions
-    //const frontFootReadings = adjustedReadings.filter(r => r.adjustedX <= xMidpoint);
-    //const backFootReadings = adjustedReadings.filter(r => r.adjustedX > xMidpoint);
-    const frontFootReadings = adjustedReadings.filter(r => r.x <= xMidpoint);
-    const backFootReadings = adjustedReadings.filter(r => r.x > xMidpoint);
-  
-    if (debug == 7) console.log('frontFootReadings:', frontFootReadings);
-    if (debug == 7) console.log('backFootReadings:', backFootReadings);
-    
-    // Calculate total pressure
-    //const totalPressure = readings.reduce((sum, r) => sum + r.value, 0);
-    const totalPressure = adjustedReadings.reduce((sum, r) => sum + r.value, 0);
-  
-    if (debug == 7) console.log('totalPressure:', totalPressure);
-
-    // Process front foot using calibrated boundaries
-    const frontFootData = processFootDataWithBoundaries(
-        frontFootReadings,
-        totalPressure,
-        boundaries.frontFoot
-    );
-
-    // Process back foot using calibrated boundaries
-    const backFootData = processFootDataWithBoundaries(
-        backFootReadings,
-        totalPressure,
-        boundaries.backFoot
-    );
-
-    // Update display
-    updatePressureDisplay('front', frontFootData);
-    updatePressureDisplay('back', backFootData);
-}
-*/
 
 
 //for power fit relation between wegith and Z value
@@ -1160,99 +1072,132 @@ function calculatePressureDistributionCalibrated(readings) {
         ...reading,
         x: settings.invertX ? (settings.sensorsX - reading.x) : reading.x,
         y: settings.invertY ? (settings.sensorsY - reading.y) : reading.y
-    }));
-
-    const boundaries = stanceCalibrationData;
+    }));  
+  
+    // The calibration boundaries were captured with inversion settings applied,
+      // so we can use them directly
+    const boundaries = stanceCalibrationData;  
     const xMidpoint = boundaries.xRange.mid;
 
     if (debug == 7) console.log('xMidpoint:', xMidpoint);
 
     // Separate front and back foot readings using calibrated xMidpoint
-    const frontFootReadings = adjustedReadings.filter(r => r.x <= xMidpoint);
+    const frontFootReadings = adjustedReadings.filter(r => r.x <= xMidpoint);    
     const backFootReadings = adjustedReadings.filter(r => r.x > xMidpoint);
+  
+    if (debug == 7) console.log('frontFootReadings:', frontFootReadings);
+    if (debug == 7) console.log('backFootReadings:', backFootReadings);
+  
+  
+    if (linearFit) {
+        //for linear fit:
+        // Calculate total pressure    
+        const totalPressure = adjustedReadings.reduce((sum, r) => sum + r.value, 0);
 
-    if (debug == 7) {
-        console.log('frontFootReadings:', frontFootReadings);
-        console.log('backFootReadings:', backFootReadings);
+        if (debug == 7) console.log('totalPressure:', totalPressure);  
+
+        // Process front foot using calibrated boundaries
+        const frontFootData = processFootDataWithBoundaries(
+            frontFootReadings,
+            totalPressure,
+            boundaries.frontFoot
+        );
+
+        // Process back foot using calibrated boundaries
+        const backFootData = processFootDataWithBoundaries(
+            backFootReadings,
+            totalPressure,
+            boundaries.backFoot
+        );
+
+        // Update display
+        updatePressureDisplay('front', frontFootData);
+        updatePressureDisplay('back', backFootData);
     }
+    else {
+        //for power fit:
+        // Calculate total weight instead of total pressure
+        const totalWeight = readings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
 
-    // Calculate total weight instead of total pressure
-    const totalWeight = readings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
+        if (debug == 7) console.log('totalWeight:', totalWeight);
 
-    if (debug == 7) console.log('totalWeight:', totalWeight);
+        // Process front foot using calibrated boundaries
+        const frontFootData = processFootDataWithBoundaries(
+            frontFootReadings,
+            totalWeight,
+            boundaries.frontFoot
+        );
 
-    // Process front foot using calibrated boundaries
-    const frontFootData = processFootDataWithBoundaries(
-        frontFootReadings,
-        totalWeight,
-        boundaries.frontFoot
-    );
+        // Process back foot using calibrated boundaries
+        const backFootData = processFootDataWithBoundaries(
+            backFootReadings,
+            totalWeight,
+            boundaries.backFoot
+        );
 
-    // Process back foot using calibrated boundaries
-    const backFootData = processFootDataWithBoundaries(
-        backFootReadings,
-        totalWeight,
-        boundaries.backFoot
-    );
-
-    // Update display
-    updatePressureDisplay('front', frontFootData);
-    updatePressureDisplay('back', backFootData);
+        // Update display
+        updatePressureDisplay('front', frontFootData);
+        updatePressureDisplay('back', backFootData);
+    }
+  
 }
 
 
 function processFootDataWithBoundaries(footReadings, totalPressure, boundaries) {
     if (footReadings.length === 0) return { total: 0, toe: 0, heel: 0 };
   
-    // Convert z-values to weights
-    const footWeights = footReadings.map(r => ({
-        ...r,
-        weight: zValueToWeight(r.value)
-    }));
+    const yMidpoint = boundaries.minY + ((boundaries.maxY - boundaries.minY) / 2);
   
-    //for linear relationship:
-    //const footTotal = footReadings.reduce((sum, r) => sum + r.value, 0);
-    //const footPercentage = Math.round((footTotal / totalPressure) * 100);
+    let footPercentage = 0;
+    let toePercentage = 0;
+    let heelPercentage = 0;
+  
+    if (linearFit) {
+        //for linear relationship:
+        const footTotal = footReadings.reduce((sum, r) => sum + r.value, 0);
+        footPercentage = Math.round((footTotal / totalPressure) * 100);
+        
+        // Separate toe and heel readings using calibrated yMidpoint
+        const toeReadings = footReadings.filter(r => r.y >= yMidpoint);
+        const heelReadings = footReadings.filter(r => r.y < yMidpoint);
+        
+        const toeTotal = toeReadings.reduce((sum, r) => sum + r.value, 0);
+        const heelTotal = heelReadings.reduce((sum, r) => sum + r.value, 0);
+        
+        toePercentage = Math.round((toeTotal / footTotal) * 100) || 0;
+        heelPercentage = Math.round((heelTotal / footTotal) * 100) || 0;
+    }
+    else {
+        //for power relationship: 
 
-    //for power relationship: 
-    const totalWeight = footWeights.reduce((sum, r) => sum + r.weight, 0);
-    //updated the calc pressure dist functions to send total weight which is already converted from raw z values to weight with the power fit eqn.  
-    //const allTotalWeight = zValueToWeight(totalPressure); // Convert total pressure to weight
-    const allTotalWeight = totalPressure; //already converted from raw z values to weight in the calling function
-    const footPercentage = Math.round((totalWeight / allTotalWeight) * 100);
-  
-    const yMidpoint = boundaries.minY + ((boundaries.maxY - boundaries.minY) / 2);    
-    
-    //for linear relationship:
-    // Separate toe and heel readings using calibrated yMidpoint
-    //const toeReadings = footReadings.filter(r => r.y >= yMidpoint);
-    //const heelReadings = footReadings.filter(r => r.y < yMidpoint);
-  
-    //for power relationship: 
-    const toeReadings = footWeights.filter(r => r.y >= yMidpoint);
-    const heelReadings = footWeights.filter(r => r.y < yMidpoint);
-  
-    //for linear relationship:
-    //const toeTotal = toeReadings.reduce((sum, r) => sum + r.value, 0);
-    //const heelTotal = heelReadings.reduce((sum, r) => sum + r.value, 0);
-  
-    //for power relationship: 
-    const toeWeight = toeReadings.reduce((sum, r) => sum + r.weight, 0);
-    const heelWeight = heelReadings.reduce((sum, r) => sum + r.weight, 0);
-  
-    //for linear relationship:
-    //const toePercentage = Math.round((toeTotal / footTotal) * 100) || 0;
-    //const heelPercentage = Math.round((heelTotal / footTotal) * 100) || 0;
-  
-    //for power relationship: 
-    const toePercentage = Math.round((toeWeight / totalWeight) * 100) || 0;
-    const heelPercentage = Math.round((heelWeight / totalWeight) * 100) || 0;
+        // Convert z-values to weights
+        const footWeights = footReadings.map(r => ({
+            ...r,
+            weight: zValueToWeight(r.value)
+        }));  
 
+        const totalWeight = footWeights.reduce((sum, r) => sum + r.weight, 0);
+        //updated the calc pressure dist functions to send total weight which is already converted from raw z values to weight with the power fit eqn.  
+        //const allTotalWeight = zValueToWeight(totalPressure); // Convert total pressure to weight
+        const allTotalWeight = totalPressure; //already converted from raw z values to weight in the calling function
+        footPercentage = Math.round((totalWeight / allTotalWeight) * 100);  
+        
+        const toeReadings = footWeights.filter(r => r.y >= yMidpoint);
+        const heelReadings = footWeights.filter(r => r.y < yMidpoint);
+        
+        const toeWeight = toeReadings.reduce((sum, r) => sum + r.weight, 0);
+        const heelWeight = heelReadings.reduce((sum, r) => sum + r.weight, 0);
+        
+        toePercentage = Math.round((toeWeight / totalWeight) * 100) || 0;
+        heelPercentage = Math.round((heelWeight / totalWeight) * 100) || 0;
+    }
+  
     return {
         total: footPercentage,
         toe: toePercentage,
         heel: heelPercentage
     };
+  
 }
 
 
@@ -2186,115 +2131,57 @@ function calculatePressureDistributionFromRecordedSwing(frame) {
         // Use the stance calibration boundaries
         const boundaries = stanceCalibrationData;
         const pressureData = frame.pressure;
-        //for linear relationship:
-        //const totalPressure = pressureData.reduce((sum, r) => sum + r.value, 0);
-        // Calculate total weight instead of total pressure
-        const totalWeight = pressureData.reduce((sum, r) => sum + zValueToWeight(r.value), 0);  //for power fit relationship
-
-        // Separate front and back foot readings using calibrated xMidpoint
-        const frontFootReadings = pressureData.filter(r => r.x <= boundaries.xRange.mid);
-        const backFootReadings = pressureData.filter(r => r.x > boundaries.xRange.mid);
-
-        // Process front foot using calibrated boundaries
-        const frontFootData = processFootDataFromRecordedSwingWithBoundaries(
-            frontFootReadings,
-            //totalPressure,  //for linear relationship
-            totalWeight,  //for power fit relationship
-            boundaries.frontFoot.minY + ((boundaries.frontFoot.maxY - boundaries.frontFoot.minY) / 2)
-        );
-
-        // Process back foot using calibrated boundaries
-        const backFootData = processFootDataFromRecordedSwingWithBoundaries(
-            backFootReadings,
-            //totalPressure,  //for linear relationship
-            totalWeight,  //for power fit relationship
-            boundaries.backFoot.minY + ((boundaries.backFoot.maxY - boundaries.backFoot.minY) / 2)
-        );
-
-        // Update display
-        updatePressureDisplayFromRecordedSwing('front', frontFootData);
-        updatePressureDisplayFromRecordedSwing('back', backFootData);
+        
+        if (linearFit) {
+            //for linear relationship:
+            const totalPressure = pressureData.reduce((sum, r) => sum + r.value, 0);            
+            // Separate front and back foot readings using calibrated xMidpoint
+            const frontFootReadings = pressureData.filter(r => r.x <= boundaries.xRange.mid);
+            const backFootReadings = pressureData.filter(r => r.x > boundaries.xRange.mid);
+            // Process front foot using calibrated boundaries
+            const frontFootData = processFootDataFromRecordedSwingWithBoundaries(
+                frontFootReadings,
+                totalPressure,  //for linear relationship                
+                boundaries.frontFoot.minY + ((boundaries.frontFoot.maxY - boundaries.frontFoot.minY) / 2)
+            );
+            // Process back foot using calibrated boundaries
+            const backFootData = processFootDataFromRecordedSwingWithBoundaries(
+                backFootReadings,
+                totalPressure,  //for linear relationship                
+                boundaries.backFoot.minY + ((boundaries.backFoot.maxY - boundaries.backFoot.minY) / 2)
+            );
+            // Update display
+            updatePressureDisplayFromRecordedSwing('front', frontFootData);
+            updatePressureDisplayFromRecordedSwing('back', backFootData);          
+        }
+        else{          
+            // Calculate total weight instead of total pressure
+            const totalWeight = pressureData.reduce((sum, r) => sum + zValueToWeight(r.value), 0);  //for power fit relationship
+            // Separate front and back foot readings using calibrated xMidpoint
+            const frontFootReadings = pressureData.filter(r => r.x <= boundaries.xRange.mid);
+            const backFootReadings = pressureData.filter(r => r.x > boundaries.xRange.mid);
+            // Process front foot using calibrated boundaries
+            const frontFootData = processFootDataFromRecordedSwingWithBoundaries(
+                frontFootReadings,
+                totalWeight,  //for power fit relationship
+                boundaries.frontFoot.minY + ((boundaries.frontFoot.maxY - boundaries.frontFoot.minY) / 2)
+            );
+            // Process back foot using calibrated boundaries
+            const backFootData = processFootDataFromRecordedSwingWithBoundaries(
+                backFootReadings,                
+                totalWeight,  //for power fit relationship
+                boundaries.backFoot.minY + ((boundaries.backFoot.maxY - boundaries.backFoot.minY) / 2)
+            );
+            // Update display
+            updatePressureDisplayFromRecordedSwing('front', frontFootData);
+            updatePressureDisplayFromRecordedSwing('back', backFootData);          
+        }      
+      
     } else {
         // Use boundaries calculated from the entire recording
         calculatePressureDistributionFromRecordedSwingUsingRecordedBoundaries(frame);
     }
 }
-
-
-/*
-//for linear relationship between weight and z values:
-function calculatePressureDistributionFromRecordedSwingUsingRecordedBoundaries(frame) {
-    // Find overall boundaries from the entire recording
-    let overallMinX = Infinity;
-    let overallMaxX = -Infinity;
-    let frontFootMinY = Infinity;
-    let frontFootMaxY = -Infinity;
-    let backFootMinY = Infinity;
-    let backFootMaxY = -Infinity;
-
-    // Find overall X boundaries and initial foot separation point
-    playbackData.forEach(frameData => {
-        frameData.pressure.forEach(point => {
-            overallMinX = Math.min(overallMinX, point.x);
-            overallMaxX = Math.max(overallMaxX, point.x);
-        });
-    });
-
-    // Calculate the midpoint for front/back foot separation
-    const xMidpoint = overallMinX + (overallMaxX - overallMinX) / 2;
-
-    // Now find Y boundaries for each foot across all frames
-    playbackData.forEach(frameData => {
-        frameData.pressure.forEach(point => {
-            if (point.x <= xMidpoint) { // Front foot
-                frontFootMinY = Math.min(frontFootMinY, point.y);
-                frontFootMaxY = Math.max(frontFootMaxY, point.y);
-            } else { // Back foot
-                backFootMinY = Math.min(backFootMinY, point.y);
-                backFootMaxY = Math.max(backFootMaxY, point.y);
-            }
-        });
-    });
-
-    // Calculate midpoints for toe/heel separation for each foot
-    const frontFootYMidpoint = frontFootMinY + ((frontFootMaxY - frontFootMinY) / 2);
-    const backFootYMidpoint = backFootMinY + ((backFootMaxY - backFootMinY) / 2);
-
-    // Process the current frame using these boundaries
-    const pressureData = frame.pressure;
-    const totalPressure = pressureData.reduce((sum, r) => sum + r.value, 0);
-
-    // Separate front and back foot readings
-    const frontFootReadings = pressureData.filter(r => r.x <= xMidpoint);
-    const backFootReadings = pressureData.filter(r => r.x > xMidpoint);
-
-    // Process each foot
-    const frontFootData = processFootDataFromRecordedSwingWithBoundaries(
-        frontFootReadings,
-        totalPressure,
-        frontFootYMidpoint
-    );
-
-    const backFootData = processFootDataFromRecordedSwingWithBoundaries(
-        backFootReadings,
-        totalPressure,
-        backFootYMidpoint
-    );
-
-    // Update display
-    updatePressureDisplayFromRecordedSwing('front', frontFootData);
-    updatePressureDisplayFromRecordedSwing('back', backFootData);
-  
-    if (debug == 4) {
-        console.log("Overall boundaries:", {
-            xRange: { min: overallMinX, max: overallMaxX, mid: xMidpoint },
-            frontFoot: { minY: frontFootMinY, maxY: frontFootMaxY, midY: frontFootYMidpoint },
-            backFoot: { minY: backFootMinY, maxY: backFootMaxY, midY: backFootYMidpoint }
-        });
-    }
-  
-}
-*/
 
 
 //for power relationship between weight and z values:
@@ -2315,9 +2202,10 @@ function calculatePressureDistributionFromRecordedSwingUsingRecordedBoundaries(f
             overallMaxX = Math.max(overallMaxX, point.x);
         });
     });
-
+  
+    // Calculate the midpoint for front/back foot separation
     const xMidpoint = overallMinX + (overallMaxX - overallMinX) / 2;
-
+    
     // Now find Y boundaries for each foot across all frames
     playbackData.forEach(frameData => {
         frameData.pressure.forEach(point => {
@@ -2330,31 +2218,53 @@ function calculatePressureDistributionFromRecordedSwingUsingRecordedBoundaries(f
             }
         });
     });
-
+  
+    // Calculate midpoints for toe/heel separation for each foot
     const frontFootYMidpoint = frontFootMinY + ((frontFootMaxY - frontFootMinY) / 2);
     const backFootYMidpoint = backFootMinY + ((backFootMaxY - backFootMinY) / 2);
-
-    const pressureData = frame.pressure;
-    // Calculate total weight instead of total pressure
-    const totalWeight = pressureData.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
-
-    const frontFootReadings = pressureData.filter(r => r.x <= xMidpoint);
-    const backFootReadings = pressureData.filter(r => r.x > xMidpoint);
-
-    const frontFootData = processFootDataFromRecordedSwingWithBoundaries(
-        frontFootReadings,
-        totalWeight,
-        frontFootYMidpoint
-    );
-
-    const backFootData = processFootDataFromRecordedSwingWithBoundaries(
-        backFootReadings,
-        totalWeight,
-        backFootYMidpoint
-    );
-
-    updatePressureDisplayFromRecordedSwing('front', frontFootData);
-    updatePressureDisplayFromRecordedSwing('back', backFootData);
+  
+    if (linearFit) {
+        //for linear fit:
+        // Process the current frame using these boundaries
+        const pressureData = frame.pressure;
+        const totalPressure = pressureData.reduce((sum, r) => sum + r.value, 0);
+        // Separate front and back foot readings
+        const frontFootReadings = pressureData.filter(r => r.x <= xMidpoint);
+        const backFootReadings = pressureData.filter(r => r.x > xMidpoint);
+        // Process each foot
+        const frontFootData = processFootDataFromRecordedSwingWithBoundaries(
+            frontFootReadings,
+            totalPressure,
+            frontFootYMidpoint
+        );
+        const backFootData = processFootDataFromRecordedSwingWithBoundaries(
+            backFootReadings,
+            totalPressure,
+            backFootYMidpoint
+        );
+        // Update display
+        updatePressureDisplayFromRecordedSwing('front', frontFootData);
+        updatePressureDisplayFromRecordedSwing('back', backFootData);
+    }
+    else { //for power fit:
+        const pressureData = frame.pressure;
+        // Calculate total weight instead of total pressure
+        const totalWeight = pressureData.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
+        const frontFootReadings = pressureData.filter(r => r.x <= xMidpoint);
+        const backFootReadings = pressureData.filter(r => r.x > xMidpoint);
+        const frontFootData = processFootDataFromRecordedSwingWithBoundaries(
+            frontFootReadings,
+            totalWeight,
+            frontFootYMidpoint
+        );
+        const backFootData = processFootDataFromRecordedSwingWithBoundaries(
+            backFootReadings,
+            totalWeight,
+            backFootYMidpoint
+        );
+        updatePressureDisplayFromRecordedSwing('front', frontFootData);
+        updatePressureDisplayFromRecordedSwing('back', backFootData);
+    }
 
     if (debug == 4) {
         console.log("Overall boundaries:", {
@@ -2363,6 +2273,7 @@ function calculatePressureDistributionFromRecordedSwingUsingRecordedBoundaries(f
             backFoot: { minY: backFootMinY, maxY: backFootMaxY, midY: backFootYMidpoint }
         });
     }
+  
 }
 
 
@@ -2370,61 +2281,55 @@ function calculatePressureDistributionFromRecordedSwingUsingRecordedBoundaries(f
 function processFootDataFromRecordedSwingWithBoundaries(footReadings, totalPressure, yMidpoint) {
     if (footReadings.length === 0) return { total: 0, toe: 0, heel: 0 };
   
-    // Convert z-values to weights
-    const footWeights = footReadings.map(r => ({
-        ...r,
-        weight: zValueToWeight(r.value)
-    }));
-  
-  
-    //for linear relationship:
-    //const footTotal = footReadings.reduce((sum, r) => sum + r.value, 0);
-    //const footPercentage = Math.round((footTotal / totalPressure) * 100);
-
-    // Fix: The y-coordinate comparison should account for inversion
     // Note: footReadings already have inversion applied from recording
   
-    //for power relationship:
-    const totalWeight = footWeights.reduce((sum, r) => sum + r.weight, 0);
-    //updated the calc pressure dist functions to send total weight which is already converted from raw z values to weight with the power fit eqn.
-    //const allTotalWeight = zValueToWeight(totalPressure); // Convert total pressure to weight
-    const allTotalWeight = totalPressure; //already converted from raw z values to weight in the calling function  
-    const footPercentage = Math.round((totalWeight / allTotalWeight) * 100);
+    let footPercentage = 0;
+    let toePercentage = 0;
+    let heelPercentage = 0;
   
+    if (linearFit) {
+        //for linear relationship:
+        const footTotal = footReadings.reduce((sum, r) => sum + r.value, 0);
+        footPercentage = Math.round((footTotal / totalPressure) * 100);
+        // Separate toe and heel readings using the established yMidpoint
+        const toeReadings = footReadings.filter(r => r.y >= yMidpoint);
+        const heelReadings = footReadings.filter(r => r.y < yMidpoint);
+        // Calculate toe and heel percentages relative to this foot's total pressure
+        const toeTotal = toeReadings.reduce((sum, r) => sum + r.value, 0);
+        const heelTotal = heelReadings.reduce((sum, r) => sum + r.value, 0);
+        //for linear relationship:
+        toePercentage = Math.round((toeTotal / footTotal) * 100) || 0;
+        heelPercentage = Math.round((heelTotal / footTotal) * 100) || 0;
+    }
+    else {
+        // Convert z-values to weights
+        const footWeights = footReadings.map(r => ({
+            ...r,
+            weight: zValueToWeight(r.value)
+        }));
+        //for power relationship:
+        const totalWeight = footWeights.reduce((sum, r) => sum + r.weight, 0);
+        //updated the calc pressure dist functions to send total weight which is already converted from raw z values to weight with the power fit eqn.
+        //const allTotalWeight = zValueToWeight(totalPressure); // Convert total pressure to weight
+        const allTotalWeight = totalPressure; //already converted from raw z values to weight in the calling function  
+        footPercentage = Math.round((totalWeight / allTotalWeight) * 100);        
+        // Separate toe and heel readings using the established yMidpoint
+        const toeReadings = footWeights.filter(r => r.y >= yMidpoint);
+        const heelReadings = footWeights.filter(r => r.y < yMidpoint);          
+        // Calculate toe and heel percentages relative to this foot's total weight
+        const toeWeight = toeReadings.reduce((sum, r) => sum + r.weight, 0);
+        const heelWeight = heelReadings.reduce((sum, r) => sum + r.weight, 0);
+        //for power relationship:
+        toePercentage = Math.round((toeWeight / totalWeight) * 100) || 0;
+        heelPercentage = Math.round((heelWeight / totalWeight) * 100) || 0;
+    }
   
-    //for linear relationship:
-    // Separate toe and heel readings using the established yMidpoint
-    //const toeReadings = footReadings.filter(r => r.y >= yMidpoint);
-    //const heelReadings = footReadings.filter(r => r.y < yMidpoint);
-    
-    //for power relationship:
-    // Separate toe and heel readings using the established yMidpoint
-    const toeReadings = footWeights.filter(r => r.y >= yMidpoint);
-    const heelReadings = footWeights.filter(r => r.y < yMidpoint);  
-  
-    //for linear relationship:
-    // Calculate toe and heel percentages relative to this foot's total pressure
-    //const toeTotal = toeReadings.reduce((sum, r) => sum + r.value, 0);
-    //const heelTotal = heelReadings.reduce((sum, r) => sum + r.value, 0);
-
-    //for power relationship:
-    // Calculate toe and heel percentages relative to this foot's total weight
-    const toeWeight = toeReadings.reduce((sum, r) => sum + r.weight, 0);
-    const heelWeight = heelReadings.reduce((sum, r) => sum + r.weight, 0);
-  
-    //for linear relationship:
-    //const toePercentage = Math.round((toeTotal / footTotal) * 100) || 0;
-    //const heelPercentage = Math.round((heelTotal / footTotal) * 100) || 0;
-  
-    //for power relationship:
-    const toePercentage = Math.round((toeWeight / totalWeight) * 100) || 0;
-    const heelPercentage = Math.round((heelWeight / totalWeight) * 100) || 0;
-
     return {
         total: footPercentage,
         toe: toePercentage,
         heel: heelPercentage
     };
+  
 }
 
 
