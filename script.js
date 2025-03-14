@@ -8,9 +8,9 @@ const MICROCHIP_UART_SERVICE = '49535343-fe7d-4ae5-8fa9-9fafd205e455';
 const MICROCHIP_UART_TX = '49535343-1e4d-4bd9-ba61-23c647249616';
 const MICROCHIP_UART_RX = '49535343-8841-43f4-a8d4-ecbe34729bb3';
 
-const debug = 7;  //4 is for foot pressure %  //5 is for playback stuff  //6 shows recorded data  //set to 1 to allow console.log debug messages  //set to 0 to turn off
+const debug = 0;  //4 is for foot pressure %  //5 is for playback stuff  //6 shows recorded data  //set to 1 to allow console.log debug messages  //set to 0 to turn off
 
-let linearFit = false;  //set to true to use linear fit for weight calcs  //set to false to use power fit
+let linearFit = true;  //set to true to use linear fit for weight calcs  //set to false to use power fit
 
 //let useMinThreshold = false;  //set to true to use a minimum threshold for weight calcs and CoP display  //set to false to disable this
 //let minThreshold = 1000;  //min threshold below which to ignore z readings for weight dist calcs and CoP calcs
@@ -577,8 +577,11 @@ const debouncedUpdateHeatmap = debounce((dataHistory, copHistory, settings) => {
   
     const histLen = settings.historyLength;  //mult by X (* 2) makes scale down more slowly  //divide by X ( / 1.5) makes the opacity scale downwards more quickly for each historical reading
 
-    let minValue = Infinity;   // Start with the largest possible value
-    let maxValue = -Infinity;  // Start with the smallest possible value
+    //these overwrite the minValue and maxValue set by the settings sliders
+    //let minValue = Infinity;   // Start with the largest possible value
+    //let maxValue = -Infinity;  // Start with the smallest possible value  
+    let dataMinValue = Infinity;   // Start with the largest possible value
+    let dataMaxValue = -Infinity;  // Start with the smallest possible value
 
     // Get canvas dimensions and scaling factors
     const container = document.getElementById('heatmap-container');
@@ -617,8 +620,10 @@ const debouncedUpdateHeatmap = debounce((dataHistory, copHistory, settings) => {
             const xScaled = x * scaleX;
             const yScaled = y * scaleY;
 
-            if (maxValue < reading.value) maxValue = reading.value;
-            if (minValue > reading.value) minValue = reading.value;
+            //if (maxValue < reading.value) maxValue = reading.value;
+            //if (minValue > reading.value) minValue = reading.value;
+            if (dataMaxValue < reading.value) dataMaxValue = reading.value;
+            if (dataMinValue > reading.value) dataMinValue = reading.value;
           
           
             allDataPoints.push({
@@ -633,8 +638,11 @@ const debouncedUpdateHeatmap = debounce((dataHistory, copHistory, settings) => {
 
     // Update heatmap data
     heatmapInstance.setData({
-        min: minValue,
-        max: maxValue,
+        //min: dataMinValue,  //this uses the overall min value of the datapoints  - this will cause valid data to be blue - this will mask active points - NOT GOOD
+        min: settings.minValue,  //this uses the min value set in the settings
+        //max: dataMaxValue,  //this uses the overall max value of the datapoints - this will make sure that there is red on the heatmap
+        max: (dataMaxValue - 300),  //this gives the (overall max value)-300 counts the color of red - to ensure theres a lot of red on the heatmap
+        //max: settings.maxValue,  //this uses the max value set in the settings
         data: allDataPoints
     });
 
@@ -1650,8 +1658,10 @@ function updateHeatmapWithRecordedSwing(frame, frameIndex) {
     //var maxValue = 0;      //seed max with smallest possible value
     const pressureData = frame.pressure;
   
-    var minValue = Infinity;   // Start with the largest possible value
-    var maxValue = -Infinity;  // Start with the smallest possible value
+    //var minValue = Infinity;   // Start with the largest possible value
+    //var maxValue = -Infinity;  // Start with the smallest possible value
+    let dataMinValue = Infinity;   // Start with the largest possible value
+    let dataMaxValue = -Infinity;  // Start with the smallest possible value
   
     var adjustedPressureData = [];
 
@@ -1680,8 +1690,8 @@ function updateHeatmapWithRecordedSwing(frame, frameIndex) {
         const scaledValue = Math.min(settings.maxValue, reading.value);
         const normalizedValue = (scaledValue / settings.maxValue) * reading.value;
 
-        if (maxValue < reading.value) maxValue = reading.value;  
-        if (minValue > reading.value) minValue = reading.value;
+        if (dataMaxValue < reading.value) dataMaxValue = reading.value;  
+        if (dataMinValue > reading.value) dataMinValue = reading.value;
 
         const element = {
             x: xScaled,
@@ -1697,6 +1707,7 @@ function updateHeatmapWithRecordedSwing(frame, frameIndex) {
     //if (debug == 5) console.log(pressureData);
     if (debug == 5) {
         console.log("maxValue= " + maxValue + "  minValue= " + minValue);
+        console.log("dataMaxValue= " + dataMaxValue + "  dataMinValue= " + dataMinValue);
         console.log("heatmap adjustedPressureData: ", adjustedPressureData);
     }
     //if (debug == 2) console.log("heatmap allDataPoints:");
@@ -1722,15 +1733,17 @@ function updateHeatmapWithRecordedSwing(frame, frameIndex) {
   
     // Update heatmap data
     heatmapInstance.setData({
-        min: 0,
-        max: settings.maxValue,
+        min: settings.minValue,
+        //max: settings.maxValue,
+        //max: dataMaxValue,  //this gives the overall max value the color of red
+        max: (dataMaxValue - 300),  //this gives the (overall max value)-300 counts the color of red - to ensure theres a lot of red on the heatmap
         //data: pressureData
         data: adjustedPressureData
     });
     
     
-    heatmapInstance.setDataMin(minValue);
-    heatmapInstance.setDataMax(maxValue);
+    //heatmapInstance.setDataMin(dataMinValue);  //this is especially bad, since it would set the activated point with the lowest reading to be dark blue and not show up at all
+    //heatmapInstance.setDataMax(dataMaxValue);  
   
     /*
       //update suggested by Claude 3.5 using poe.com
