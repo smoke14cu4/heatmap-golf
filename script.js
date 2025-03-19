@@ -81,7 +81,7 @@ const settings = {
     invertX: true,        // invert X axis
     invertY: false,         // invert Y axis
     
-    copTriggerThreshold: 0.1,  // inches - minimum movement to start recording  //0.5 was too much (started recording late)  //try 0.1
+    copTriggerThreshold: 0.2,  //0.1 was not quite enough to prevent false triggers //0.2 seemed pretty good  // inches - minimum movement to start recording  //0.5 was too much (started recording late)  //try 0.1
     //inchesPerSensorX: settings.matWidth / settings.sensorsX,
     //inchesPerSensorY: settings.matHeight / settings.sensorsY
     swingDuration: 3.0,        // seconds
