@@ -1,256 +1,188 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-VX1N2E6KJN"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-
-      gtag('config', 'G-VX1N2E6KJN');
-    </script>
-    <!-- Google tag (gtag.js) -->
-  
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLE Pressure Sensor Visualization</title>  <!-- this shows up in the window's title bar -->
+    <title>BLE Pressure Sensor Visualization</title>
     
-    <!--<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>  -->
-    <!--  plotly-3.0.0.min.js was too new to show titles and X and Y axis labels for the way that had it before? -->
-    <script src="https://cdn.plot.ly/plotly-2.0.0.min.js"></script>  <!-- Include Plotly - now have to specify the version of plotly to use -->
+    <!-- Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-VX1N2E6KJN"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-VX1N2E6KJN');
+    </script>
     
-  
-    <script src="heatmap.js"></script>  <!--  heatmap.js library included in file structure -->
-    <script src="script.js" defer></script> <!-- Your custom script -->
-  
+    <!-- External Dependencies -->
+    <script src="https://cdn.plot.ly/plotly-2.0.0.min.js"></script>
+    <script src="heatmap.js"></script>
+    
+    <!-- Application Resources -->
     <link rel="stylesheet" href="style.css">
-    
+    <script src="script.js" defer></script>
 </head>
-  
 <body>
     <div class="container">
-        <h1>Pressure Sensor Visualization</h1>
-        
-        <div class="controls">
-            <button id="scanButton">Scan for Devices</button>
-            <!-- <div id="deviceList"></div>            -->
-        </div>
-      
-        <div id="status"></div>
-      
-      
-        <!-- Settings sections remain at top -->
-        <div class="settings-controls">
-            <div class="toggle-container">
-                <label class="toggle-switch">
-                    <input type="checkbox" id="settingsToggle">
-                    <span class="slider"></span>
-                </label>
-                <span>Show/Hide General Settings</span>
-            </div>
-            <div id="settingsSection">
-                  <div class="control-group">
-                      <label>Heatmap Clear Time (seconds): 
-                          <input type="number" id="clearTime" min="1" max="60" value="5">
-                      </label>
-                      <input type="range" id="clearTimeSlider" min="1" max="60" value="5">
-                  </div>
-                  <div class="control-group">
-                      <label>Heatmap Point Radius: 
-                          <input type="number" id="radius" min="1" max="150" value="80">
-                      </label>
-                      <input type="range" id="radiusSlider" min="1" max="150" value="80">
-                  </div>
-                  <div class="control-group">
-                      <label>Heatmap Point Blur: 
-                          <input type="number" id="blur" min="0" max="1" step="0.05" value="0.95">
-                      </label>
-                      <input type="range" id="blurSlider" min="0" max="1" step="0.05" value="0.95">
-                  </div>
-                  <div class="control-group">
-                      <label>Max Pressure Value: 
-                          <input type="number" id="maxValue" min="1" max="4000" value="2000">
-                      </label>
-                      <input type="range" id="maxValueSlider" min="1" max="4000" value="2000">
-                  </div>
-                  <div class="control-group">
-                      <label>Min Pressure Value: 
-                          <input type="number" id="minValue" min="0" max="4000" value="200">
-                      </label>
-                      <input type="range" id="minValueSlider" min="0" max="4000" value="200">
-                  </div>
-                  <div class="control-group">
-                      <label>Max Opacity Value: 
-                          <input type="number" id="maxOpacity" min="0" max="1" step="0.02" value="0.8">
-                      </label>
-                      <input type="range" id="maxOpacitySlider" min="0" max="1" step="0.02" value="0.8">
-                  </div>
-                  <div class="control-group">
-                      <label>Min Opacity Value: 
-                          <input type="number" id="minOpacity" min="0" max="1" step="0.02" value="0.02">
-                      </label>
-                      <input type="range" id="minOpacitySlider" min="0" max="1" step="0.02" value="0.02">
-                  </div>
-                  <div class="control-group">
-                      <label>Pressure History Length: 
-                          <input type="number" id="historyLength" min="0" max="50" value="1">
-                      </label>
-                      <input type="range" id="historyLengthSlider" min="0" max="50" value="1">
-                  </div>
-                  <div class="control-group">
-                      <label>CoP History Length: 
-                          <input type="number" id="copHistoryLength" min="1" max="200" value="60">
-                      </label>
-                      <input type="range" id="copHistoryLengthSlider" min="1" max="200" value="60">
-                  </div>
-              
-                  <div class="control-group">
-                      <!-- <label>CoP Trigger Threshold (inches): -->
-                      <label>Start Recording Movement Threshold (inches): 
-                          <input type="number" id="copTriggerThreshold" 
-                                 min="0" max="2" step="0.05" 
-                                 value="0.2">
-                      </label>
-                      <input type="range" id="copTriggerThresholdSlider" 
-                             min="0" max="2" step="0.05" 
-                             value="0.2">
-                  </div>
-                  <div class="control-group">
-                      <label>
-                          <input type="checkbox" id="useFixedDurationStop" checked>
-                          Use Fixed Duration Stop
-                      </label>
-                  </div>
-                  <div class="control-group">
-                      <label>Swing Duration (seconds): 
-                          <input type="number" id="swingDuration" 
-                                 min="1" max="10" step="0.5" 
-                                 value="3.0">
-                      </label>
-                      <input type="range" id="swingDurationSlider" 
-                             min="1" max="10" step="0.5" 
-                             value="3.0">
-                  </div>
-                  <div class="control-group">
-                      <label>
-                          <input type="checkbox" id="useMovementThresholdStop">
-                          Use Movement Threshold Stop
-                      </label>
-                  </div>
-                  <div class="control-group">
-                      <label>Stop Recording Movement Threshold (inches): 
-                          <input type="number" id="stopTriggerThreshold" 
-                                 min="0.1" max="5" step="0.1" 
-                                 value="0.3">
-                      </label>
-                      <input type="range" id="stopTriggerThresholdSlider" 
-                             min="0.1" max="5" step="0.1" 
-                             value="0.3">
-                  </div>                  
-              
-              </div>
-          
-        </div>
+        <header>
+            <h1>Pressure Sensor Visualization</h1>
+        </header>
 
-        <div class="mat-settings">
-            <div class="toggle-container">
-                <label class="toggle-switch">
-                    <input type="checkbox" id="matSettingsToggle">
-                    <span class="slider"></span>
-                </label>
-                <span>Show/Hide Mat Settings</span>
+        <!-- Connection Controls -->
+        <section class="connection-controls">
+            <div class="button-group">
+                <button id="scanButton" class="primary-button">Scan for Devices</button>
+                <button id="disconnectButton" class="danger-button" disabled>Disconnect Device</button>
             </div>
-            <div id="matSettingsSection">
-                <div class="mat-control">
-                    <label>Mat Width (inches): 
-                        <input type="number" id="matWidth" min="1" max="100" value="46">
+            <div id="status" class="status-display"></div>
+        </section>
+
+        <!-- Settings Panels -->
+        <section class="settings-panels">
+            <!-- General Settings -->
+            <div class="settings-group">
+                <div class="toggle-container">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="settingsToggle">
+                        <span class="slider"></span>
                     </label>
+                    <span>General Settings</span>
                 </div>
-                <div class="mat-control">
-                    <label>Mat Height (inches): 
-                        <input type="number" id="matHeight" min="1" max="100" value="22">
-                    </label>
+                <div id="settingsSection" class="settings-content">
+                    <div class="control-group">
+                        <label>Heatmap Clear Time (s):
+                            <input type="number" id="clearTime" min="1" max="60" value="5">
+                        </label>
+                        <input type="range" id="clearTimeSlider" min="1" max="60" value="5">
+                    </div>
+                    <div class="control-group">
+                        <label>Heatmap Point Radius:
+                            <input type="number" id="radius" min="1" max="150" value="80">
+                        </label>
+                        <input type="range" id="radiusSlider" min="1" max="150" value="80">
+                    </div>
+                    <div class="control-group">
+                        <label>Heatmap Point Blur:
+                            <input type="number" id="blur" min="0" max="1" step="0.05" value="0.95">
+                        </label>
+                        <input type="range" id="blurSlider" min="0" max="1" step="0.05" value="0.95">
+                    </div>
+                    <div class="control-group">
+                        <label>Max Pressure Value:
+                            <input type="number" id="maxValue" min="1" max="4000" value="2000">
+                        </label>
+                        <input type="range" id="maxValueSlider" min="1" max="4000" value="2000">
+                    </div>
+                    <div class="control-group">
+                        <label>Min Pressure Value:
+                            <input type="number" id="minValue" min="0" max="4000" value="200">
+                        </label>
+                        <input type="range" id="minValueSlider" min="0" max="4000" value="200">
+                    </div>
+                    <div class="control-group">
+                        <label>Max Opacity Value:
+                            <input type="number" id="maxOpacity" min="0" max="1" step="0.02" value="0.8">
+                        </label>
+                        <input type="range" id="maxOpacitySlider" min="0" max="1" step="0.02" value="0.8">
+                    </div>
+                    <div class="control-group">
+                        <label>Min Opacity Value:
+                            <input type="number" id="minOpacity" min="0" max="1" step="0.02" value="0.02">
+                        </label>
+                        <input type="range" id="minOpacitySlider" min="0" max="1" step="0.02" value="0.02">
+                    </div>
+                    <div class="control-group">
+                        <label>Pressure History Length:
+                            <input type="number" id="historyLength" min="0" max="50" value="1">
+                        </label>
+                        <input type="range" id="historyLengthSlider" min="0" max="50" value="1">
+                    </div>
+                    <div class="control-group">
+                        <label>CoP History Length:
+                            <input type="number" id="copHistoryLength" min="1" max="200" value="60">
+                        </label>
+                        <input type="range" id="copHistoryLengthSlider" min="1" max="200" value="60">
+                    </div>
                 </div>
-                <div class="mat-control">
-                    <label>Sensors in X direction: 
-                        <input type="number" id="sensorsX" min="1" max="50" value="23">
-                    </label>
-                </div>
-                <div class="mat-control">
-                    <label>Sensors in Y direction: 
-                        <input type="number" id="sensorsY" min="1" max="50" value="11">
-                    </label>
-                </div>
-                <div class="mat-control checkbox">
-                    <label>
-                        <input type="checkbox" id="invertX" checked> Invert X axis                        
-                    </label>
-                    <!-- moved the invertY up to here to keep it on same line as invertX  -->
-                    <label>
-                        <input type="checkbox" id="invertY" unchecked> Invert Y axis
-                    </label>
-                </div>
-                <!-- <div class="mat-control checkbox">
-                    <label>
-                        <input type="checkbox" id="invertY" checked> Invert Y axis
-                    </label>
-                </div> -->
-              
             </div>
-            
-        
-        </div>
 
-        
+            <!-- Mat Settings -->
+            <div class="settings-group">
+                <div class="toggle-container">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="matSettingsToggle">
+                        <span class="slider"></span>
+                    </label>
+                    <span>Mat Settings</span>
+                </div>
+                <div id="matSettingsSection" class="settings-content">
+                    <div class="mat-control">
+                        <label>Mat Width (inches):
+                            <input type="number" id="matWidth" min="1" max="100" value="46">
+                        </label>
+                    </div>
+                    <div class="mat-control">
+                        <label>Mat Height (inches):
+                            <input type="number" id="matHeight" min="1" max="100" value="22">
+                        </label>
+                    </div>
+                    <div class="mat-control">
+                        <label>Sensors in X direction:
+                            <input type="number" id="sensorsX" min="1" max="50" value="23">
+                        </label>
+                    </div>
+                    <div class="mat-control">
+                        <label>Sensors in Y direction:
+                            <input type="number" id="sensorsY" min="1" max="50" value="11">
+                        </label>
+                    </div>
+                    <div class="mat-control checkbox">
+                        <label>
+                            <input type="checkbox" id="invertX" checked> Invert X axis
+                        </label>
+                        <label>
+                            <input type="checkbox" id="invertY"> Invert Y axis
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </section>
 
-        <!-- New wrapper for main content -->
+        <!-- Main Content Area -->
         <div class="main-content-wrapper">
-            <!-- Left column -->
+            <!-- Left Column - Visualizations -->
             <div class="left-column">
                 <div class="visualization-container">
+                    <!-- Heatmap -->
                     <div id="heatmap-container" class="heatmap-wrapper">
                         <div id="heatmap"></div>
                         <canvas id="heatmap-overlay"></canvas>
                     </div>
-                  
-                  <!-- CoP Graph and Raw Data Section -->
-                  <div class="cop-and-data">
-                      <!-- CoP Mode Toggle moved inside the container -->
-                      <div class="cop-mode-toggle">
-                          <input type="radio" id="normalMode" name="copMode" value="normal" checked>
-                          <label for="normalMode">Normal</label>
-                          <input type="radio" id="deltaMode" name="copMode" value="delta">
-                          <label for="deltaMode">Delta</label>
-                      </div>
-                    
-                      <div id="cop-graph" style="width: 100%; height: 400px;"></div> 
-                      <!-- <div id="cop-graph"></div> -->
-                    
-                      <div class="raw-data-panel">                          
-                          <h3>Coordinates Data</h3>
-                          <div id="raw-data"></div>
-                      </div>
-                    
-                  </div>
-                  
-                  <div id="velocity-graph" style="width: 100%; height: 400px;"></div>
-                  
-                  <div id="force-graph" style="width: 100%; height: 400px;"></div>
-                  
-                  
+
+                    <!-- CoP Graph Section -->
+                    <div class="cop-and-data">
+                        <div class="cop-mode-toggle">
+                            <input type="radio" id="normalMode" name="copMode" value="normal" checked>
+                            <label for="normalMode">Normal</label>
+                            <input type="radio" id="deltaMode" name="copMode" value="delta">
+                            <label for="deltaMode">Delta</label>
+                        </div>
+                        <div id="cop-graph"></div>
+                        <div class="raw-data-panel">
+                            <h3>Coordinates Data</h3>
+                            <div id="raw-data"></div>
+                        </div>
+                    </div>
+
+                    <!-- Additional Graphs -->
+                    <div id="velocity-graph"></div>
+                    <div id="force-graph"></div>
                 </div>
-              
             </div>
 
-            <!-- Right column -->
+            <!-- Right Column - Controls and Data -->
             <div class="right-column">
-                
-                
-                
-                
-                <!-- Add this just before the pressure-distribution div -->
+                <!-- Weight Distribution Controls -->
                 <div class="weight-distribution-controls">
                     <div class="method-selector">
                         <input type="radio" id="perFrameMethod" name="weightDistMethod" value="perFrame" checked>
@@ -258,33 +190,31 @@
                         <input type="radio" id="calibratedMethod" name="weightDistMethod" value="calibrated">
                         <label for="calibratedMethod">Stance-Calibrated Method</label>
                     </div>
-                    <button id="calibrateStanceButton" class="calibrate-button">Calibrate Stance Position - 8s Recording</button>
+                    <button id="calibrateStanceButton" class="calibrate-button">
+                        Calibrate Stance Position - 8s Recording
+                    </button>
                     <div id="calibrationCountdown" class="countdown"></div>
                 </div>
-                              
+
+                <!-- Pressure Distribution Display -->
                 <div id="pressure-distribution" class="info-panel">
-                    <!-- Weight Distribution content -->                    
                     <div class="pressure-title">Weight Distribution</div>
                     <div class="pressure-stats">
                         <div class="foot-column">
                             <div class="toe-reading" id="front-toe-percentage">Toe: 0%</div>
-                            <!-- <div class="front-foot">Front Foot: <span id="front-percentage">0</span>%</div> -->
                             <div class="front-foot">Left Foot: <span id="front-percentage">0</span>%</div>
                             <div class="heel-reading" id="front-heel-percentage">Heel: 0%</div>
                         </div>
                         <div class="foot-column">
                             <div class="toe-reading" id="back-toe-percentage">Toe: 0%</div>
-                            <!-- <div class="back-foot">Back Foot: <span id="back-percentage">0</span>%</div> -->
                             <div class="back-foot">Right Foot: <span id="back-percentage">0</span>%</div>
                             <div class="heel-reading" id="back-heel-percentage">Heel: 0%</div>
                         </div>
                     </div>
-                    
                 </div>
 
+                <!-- Playback Controls -->
                 <div class="playback-controls" style="display: none;">
-                    <!--<div class="playback-controls" style="display: block;">-->  
-                    <!-- Playback controls content -->                                        
                     <div class="playback-buttons">
                         <button id="skipStart" title="Skip to Start">⏮</button>
                         <button id="reversePlay" title="Play Reverse">⏪</button>
@@ -299,7 +229,7 @@
                         <div id="timeDisplay">0.000s</div>
                     </div>
                     <div class="speed-control">
-                        <label>Playback Speed: 
+                        <label>Playback Speed:
                             <select id="playbackSpeed">
                                 <option value="0.25">0.25x</option>
                                 <option value="0.5">0.5x</option>
@@ -309,22 +239,21 @@
                             </select>
                         </label>
                     </div>
-                    
                 </div>
 
+                <!-- CoP Controls -->
                 <div class="cop-controls">
-                    <!-- CoP controls content -->                    
-                    <button id="readyButton" class="ready-button">Ready to Start Swing - 5s Countdown</button>
+                    <button id="readyButton" class="ready-button">
+                        Ready to Start Swing - 5s Countdown
+                    </button>
                     <div id="countdown" class="countdown"></div>
-                    
                 </div>
 
+                <!-- CoP Stats -->
                 <div id="cop-stats" class="info-panel">
-                    <!-- CoP stats content -->
                     <div class="stats-title">Center of Pressure Statistics</div>
                     <div class="stats-grid">
                         <div class="stat-item">
-                            <!--<label>Path Distance:</label>-->
                             <label>Path Length:</label>
                             <span id="pathDistance">0.00</span> in
                         </div>
@@ -349,39 +278,21 @@
                             <span id="yDistance">0.00</span> in
                         </div>
                     </div>
-                    
-                </div>
-              
-                <div class="disconnect-container">
-                  <button id="disconnectButton">Disconnect Device</button>
                 </div>
 
+                <!-- Debug Panel -->
                 <div class="debug-panel">
-                  <!-- Debug panel content -->
-                  <div class="toggle-container">
-                      <label class="toggle-switch">
-                          <input type="checkbox" id="debugInformationToggle">
-                          <span class="slider"></span>
-                      </label>
-                      <span>Show/Hide Debug Information</span>
-                  </div>
-
-                  <!-- <h3>Debug Information</h3> -->
-                  <div id="connection-info"></div>
-
-                  <!-- <div id="raw-data"></div> -->     
-                  
-                </div>              
-              
+                    <div class="toggle-container">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="debugInformationToggle">
+                            <span class="slider"></span>
+                        </label>
+                        <span>Debug Information</span>
+                    </div>
+                    <div id="connection-info"></div>
+                </div>
             </div>
-          
         </div>
-      
-      
     </div>
-      
-      
-  
 </body>
-  
 </html>
