@@ -1,6 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-VX1N2E6KJN"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-VX1N2E6KJN');
+    </script>
+    <!-- Google tag (gtag.js) -->
+  
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BLE Pressure Sensor Visualization</title>  <!-- this shows up in the window's title bar -->
@@ -223,12 +235,20 @@
                     
                   </div>
                   
+                  <div id="velocity-graph" style="width: 100%; height: 400px;"></div>
+                  
+                  <div id="force-graph" style="width: 100%; height: 400px;"></div>
+                  
+                  
                 </div>
               
             </div>
 
             <!-- Right column -->
             <div class="right-column">
+                
+                
+                
                 
                 <!-- Add this just before the pressure-distribution div -->
                 <div class="weight-distribution-controls">
