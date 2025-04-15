@@ -1,160 +1,128 @@
-/* General styles */
-body {
-    font-family: Arial, sans-serif;
+/* CSS Variables */
+:root {
+    /* Colors */
+    --primary-color: #4CAF50;
+    --secondary-color: #2196F3;
+    --danger-color: #dc3545;
+    --text-color: #333333;
+    --background-color: #f0f0f0;
+    --panel-background: white;
+    --border-color: #cccccc;
+    --highlight-color: yellow;
+    
+    /* Dimensions */
+    --container-max-width: 1600px;
+    --spacing-xs: 2px;
+    --spacing-sm: 5px;
+    --spacing-md: 10px;
+    --spacing-lg: 20px;
+    --border-radius: 4px;
+    
+    /* Transitions */
+    --transition-speed: 0.4s;
+    
+    /* Typography */
+    --font-family: Arial, sans-serif;
+    --font-size-small: 12px;
+    --font-size-normal: 14px;
+    --font-size-large: 16px;
+    --font-size-xlarge: 24px;
+}
+
+/* Base Styles */
+* {
     margin: 0;
-    padding: 20px;
-    background-color: #f0f0f0;
+    padding: 0;
+    box-sizing: border-box;
 }
 
+body {
+    font-family: var(--font-family);
+    background-color: var(--background-color);
+    color: var(--text-color);
+    line-height: 1.5;
+    margin: 0;
+    padding: var(--spacing-lg);
+}
+
+/* Layout */
 .container {
-    max-width: 1600px;
+    max-width: var(--container-max-width);
     margin: 0 auto;
-    padding: 0 20px;
+    padding: 0 var(--spacing-lg);
 }
 
-h1 {
+header {
     text-align: center;
-    color: #333333;
+    margin-bottom: var(--spacing-lg);
 }
 
-/* Main content wrapper for responsive layout */
+/* Main Content Layout */
 .main-content-wrapper {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: var(--spacing-lg);
 }
 
-/* Media query for wide screens */
-@media screen and (min-width: 1200px) {
-    .main-content-wrapper {
-        flex-direction: row;
-        align-items: flex-start;
-    }
-
-    .left-column {
-        flex: 3;
-        min-width: 0;
-    }
-
-    .right-column {
-        flex: 2;
-        min-width: 300px;
-        max-width: 500px;
-    }
+/* Buttons and Controls */
+.button-group {
+    display: flex;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
 }
 
-/* Controls section */
-.controls {
-    margin: 20px 0;
-}
-
-#scanButton {
-    padding: 10px 20px;
-    font-size: 16px;
-    background-color: #4CAF50;
+.primary-button {
+    background-color: var(--primary-color);
     color: white;
     border: none;
-    border-radius: 4px;
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--border-radius);
     cursor: pointer;
+    font-size: var(--font-size-normal);
+    transition: background-color var(--transition-speed);
 }
 
-#scanButton:hover {
-    background-color: #45a049;
+.primary-button:hover {
+    background-color: color-mix(in srgb, var(--primary-color) 85%, black);
 }
 
-#deviceList {
-    margin-top: 10px;
+.primary-button:disabled {
+    background-color: var(--border-color);
+    cursor: not-allowed;
 }
 
-.device-item {
-    padding: 10px;
-    margin: 5px 0;
-    background-color: white;
-    border-radius: 4px;
-    cursor: pointer;
+.danger-button {
+    background-color: var(--danger-color);
+    color: white;
 }
 
-.device-item:hover {
-    background-color: #e9e9e9;
+.danger-button:hover {
+    background-color: color-mix(in srgb, var(--danger-color) 85%, black);
 }
 
-
-/* Settings section */
-.settings-controls, .mat-settings {
-    margin: 5px 0;
-    border-top: 1px solid #cccccc;
-    padding: 2px;
-    border-radius: 4px;
+/* Settings Panels */
+.settings-panels {
+    margin-bottom: var(--spacing-lg);
 }
 
-#settingsSection, #matSettingsSection {
-    margin-top: 2px;
-    margin-bottom: 2px;
+.settings-group {
+    background-color: var(--panel-background);
+    border-radius: var(--border-radius);
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-md);
 }
 
-.control-group {
-    margin: 5px 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+.settings-content {
+    display: none;
+    padding: var(--spacing-md);
 }
 
-.control-group label {
-    min-width: 200px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.control-group label input[type="checkbox"] {
-    margin-right: 8px;
-}
-
-.control-group input[type="number"] {
-    width: 60px;
-    padding: 5px;
-    border: 1px solid #cccccc;
-    border-radius: 4px;
-}
-
-.control-group input[type="range"] {
-    flex: 1;
-    margin: 0;
-}
-
-/* Mat settings */
-.mat-settings {
-    border-top: 1px solid #cccccc;    
-    padding-top: 2px;
-    margin-top: 2px;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 10px;
-    width: 100%;
-    max-width: 100%;
-}
-
-.mat-control {
-    margin: 2px 0;
-}
-
-.mat-control.checkbox {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.mat-control input[type="number"] {
-    width: 60px;
-}
-
-/* Toggle switches */
+/* Toggle Switches */
 .toggle-container {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 2px;
-    padding-bottom: 2px;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-xs);
 }
 
 .toggle-switch {
@@ -177,8 +145,8 @@ h1 {
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: #cccccc;
-    transition: 0.4s;
+    background-color: var(--border-color);
+    transition: var(--transition-speed);
     border-radius: 20px;
 }
 
@@ -190,40 +158,68 @@ h1 {
     left: 3px;
     bottom: 3px;
     background-color: white;
-    transition: 0.4s;
+    transition: var(--transition-speed);
     border-radius: 50%;
 }
 
 input:checked + .slider {
-    background-color: #4CAF50;
+    background-color: var(--primary-color);
 }
 
 input:checked + .slider:before {
     transform: translateX(14px);
 }
 
+/* Control Groups */
+.control-group {
+    margin: var(--spacing-sm) 0;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
 
+.control-group label {
+    min-width: 200px;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.control-group input[type="number"] {
+    width: 60px;
+    padding: var(--spacing-sm);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+}
+
+.control-group input[type="range"] {
+    flex: 1;
+    margin: 0;
+}
+
+/* Visualization Container */
 .visualization-container {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: var(--spacing-lg);
     width: 100%;
 }
 
-.heatmap-wrapper {      
+.heatmap-wrapper {
     width: 100%;
     height: 400px;
     position: relative;
-    background-color: white;
-    border-radius: 4px;
+    background-color: var(--panel-background);
+    border-radius: var(--border-radius);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     overflow: hidden;
 }
 
+/* Heatmap and Overlay */
 #heatmap {
     position: absolute;
     top: 0;
-    left: 0;    
+    left: 0;
     width: 100% !important;
     height: 100% !important;
     z-index: 1;
@@ -232,314 +228,152 @@ input:checked + .slider:before {
 #heatmap-overlay {
     position: absolute;
     top: 0;
-    left: 0;    
+    left: 0;
     width: 100% !important;
     height: 100% !important;
     pointer-events: none;
     z-index: 2;
 }
-/* Update the CoP Mode Toggle styles */
+
+/* CoP Controls and Display */
 .cop-mode-toggle {
     position: absolute;
-    top: 10px;          /* Distance from top of container */
-    left: 10px;         /* Distance from left of container */
-    z-index: 10;        /* Ensure it appears above the graph */
-    background-color: rgba(255, 255, 255, 0.9); /* Semi-transparent white background */
-    padding: 5px;
-    border-radius: 4px;
+    top: var(--spacing-md);
+    left: var(--spacing-md);
+    z-index: 10;
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: var(--spacing-sm);
+    border-radius: var(--border-radius);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-.cop-mode-toggle label {
-    display: inline-block;
-    padding: 5px 15px;
-    background-color: #f0f0f0;
-    border: 1px solid #cccccc;
-    cursor: pointer;
-    font-size: 12px;    /* Slightly smaller font size */
-}
-
-.cop-mode-toggle label:first-of-type {
-    border-radius: 4px 0 0 4px;
-}
-
-.cop-mode-toggle label:last-of-type {
-    border-radius: 0 4px 4px 0;
-}
-
-.cop-mode-toggle input[type="radio"] {
-    display: none;
-}
-
-.cop-mode-toggle input[type="radio"]:checked + label {
-    background-color: #4CAF50;
-    color: white;
-    border-color: #4CAF50;
-}
-
-/* CoP graph and raw data display */
 .cop-and-data {
-    position: relative;  /* Add this to make absolute positioning work */
+    position: relative;
     display: flex;
     flex-direction: row;
-    gap: 5px;  /* Spacing between CoP graph and raw data */
+    gap: var(--spacing-sm);
 }
 
 #cop-graph {
-    flex: 3;  /* CoP graph takes up 3 parts of the width */
-    background-color: white;
-    border-radius: 4px;
-    border: 1px solid #cccccc;
+    flex: 3;
+    background-color: var(--panel-background);
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
 }
 
+/* Raw Data Panel */
 .raw-data-panel {
     flex: 1;
-    background-color: #f8f8f8;
-    padding: 10px;
-    border-radius: 4px;
+    background-color: var(--background-color);
+    padding: var(--spacing-md);
+    border-radius: var(--border-radius);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    max-height: 400px;  /* Matches the CoP graph height */
-    overflow-y: auto;  /* Add scrolling if the content exceeds the height */
+    max-height: 400px;
+    overflow-y: auto;
 }
 
 .raw-data-panel h3 {
     margin-top: 0;
-    font-size: 14px;
-    color: #333333;
+    font-size: var(--font-size-normal);
+    color: var(--text-color);
 }
 
 #raw-data {
-    margin: 4px 0;
-    padding: 3px;
-    background-color: #f8f8f8;
-    border-radius: 4px;
+    margin: var(--spacing-xs) 0;
+    padding: var(--spacing-sm);
+    background-color: var(--background-color);
+    border-radius: var(--border-radius);
     max-height: 400px;
     overflow-y: auto;
     font-family: monospace;
-    font-size: 12px;
+    font-size: var(--font-size-small);
     line-height: 1.5;
 }
 
-/* Weight Distribution Calculation Method Selection and Calibration Button */
-.weight-distribution-controls {
-    margin-bottom: 15px;
-    padding: 10px;
-    background-color: #f8f8f8;
-    border-radius: 4px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.method-selector {
-    margin-bottom: 10px;
-    display: flex;
-    justify-content: center;
-    gap: 15px;
-}
-
-.method-selector input[type="radio"] {
-    margin-right: 5px;
-}
-
-.calibrate-button {
-    width: 100%;
-    padding: 10px;
-    background-color: #2196F3;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    margin-bottom: 5px;
-}
-
-.calibrate-button:disabled {
-    background-color: #cccccc;
-    cursor: not-allowed;
-}
-
-
-/* Left vs Right and toe vs heel foot pressure distribution */
-.pressure-title {
-    font-weight: bold;
-    margin-bottom: 5px;
-}
-
-.pressure-stats {
-    display: flex;
-    justify-content: space-around;
-    margin-bottom: 10px;
-}
-
-.foot-column {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 5px;
-}
-
-.front-foot, .back-foot {
-    padding: 5px 10px;
-    /*background-color: rgba(0, 0, 58, 0.8);  */  /* orig generated content */
-    background-color: rgba(211, 211, 211, 0.8);
-    border-radius: 4px;
-    margin: 0 5px;
-}
-
-.toe-reading, .heel-reading {
-    font-size: 0.9em;
-    padding: 3px 8px;    
-    /*background-color: rgba(0, 0, 58, 0.6);  */  /* orig generated content */
-    background-color: rgba(211, 211, 211, 0.6);
-    border-radius: 3px;
-}
-
+/* Playback Controls */
 .playback-controls {
-    margin: 15px 0;
-    padding: 10px;
+    margin: var(--spacing-lg) 0;
+    padding: var(--spacing-md);
     background-color: rgba(0, 0, 0, 0.1);
-    border-radius: 5px;
+    border-radius: var(--border-radius);
 }
 
 .playback-buttons {
     display: flex;
     justify-content: center;
-    gap: 10px;
-    margin-bottom: 10px;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
 }
 
 .playback-buttons button {
-    padding: 5px 15px;
-    font-size: 20px;
-    background-color: #2196F3;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    font-size: var(--font-size-xlarge);
+    background-color: var(--secondary-color);
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--border-radius);
     cursor: pointer;
 }
 
-.playback-buttons button:disabled {
-    background-color: #cccccc;
-    cursor: not-allowed;
-}
-
-.playback-slider-container {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin: 10px 0;
-}
-
-#frameSlider {
-    flex-grow: 1;
-}
-
-#timeDisplay {
-    min-width: 80px;
-    text-align: right;
-}
-
-.speed-control {
-    text-align: center;
-    margin-top: 10px;
-}
-
-#connection-info {
-    margin: 10px 0;
-    padding: 10px;
-    background-color: #f8f8f8;
-    border-radius: 4px;
-    max-height: 200px;
-    overflow-y: auto;
-}
-
-.cop-controls {
-    margin: 10px 0;
-    text-align: center;
-}
-
-.ready-button {
-    padding: 10px 20px;
-    background-color: #4CAF50;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 16px;
-}
-
-.ready-button:disabled {
-    background-color: #cccccc;
-    cursor: not-allowed;
-}
-
-.countdown {
-    font-size: 24px;
-    margin: 10px 0;
-    font-weight: bold;
-}
-
+/* Stats Display */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
-    margin: 10px 0;
+    gap: var(--spacing-md);
+    margin: var(--spacing-md) 0;
 }
 
-.stat-item {    
-    /*background-color: rgba(0, 0, 58, 0.8);  */  /* orig generated content */
+.stat-item {
     background-color: rgba(211, 211, 211, 0.8);
-    padding: 5px 10px;
-    border-radius: 4px;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--border-radius);
     display: flex;
     justify-content: space-between;
 }
 
-/* Disconnect Button Stuff */
-
-.disconnect-container {
-    margin: 20px 0;
-    text-align: center;
-}
-
-#disconnectButton {
-    padding: 10px 20px;
-    font-size: 16px;
-    background-color: #dc3545;  /* Red color for disconnect */
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-#disconnectButton:hover {
-    background-color: #c82333;
-}
-
-#disconnectButton:disabled {
-    background-color: #cccccc;
-    cursor: not-allowed;
-}
-
-/* Debug panel */
+/* Debug Panel */
 .debug-panel {
-    margin-top: 20px;
-    padding: 15px;
-    background-color: white;
-    border-radius: 4px;
+    margin-top: var(--spacing-lg);
+    padding: var(--spacing-lg);
+    background-color: var(--panel-background);
+    border-radius: var(--border-radius);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.debug-panel h3 {
-    margin-top: 0;
-    color: #333333;
+#connection-info {
+    margin: var(--spacing-md) 0;
+    padding: var(--spacing-md);
+    background-color: var(--background-color);
+    border-radius: var(--border-radius);
+    max-height: 200px;
+    overflow-y: auto;
 }
 
+/* Responsive Design */
+@media screen and (min-width: 1200px) {
+    .main-content-wrapper {
+        flex-direction: row;
+        align-items: flex-start;
+    }
 
-/* Ensure panels in right column maintain proper spacing */
-.right-column > * {
-    margin-bottom: 20px;
+    .left-column {
+        flex: 3;
+        min-width: 0;
+    }
+
+    .right-column {
+        flex: 2;
+        min-width: 300px;
+        max-width: 500px;
+    }
 }
 
-.right-column > *:last-child {
-    margin-bottom: 0;
+/* Print Styles */
+@media print {
+    .controls,
+    .settings-panels,
+    .playback-controls,
+    .debug-panel {
+        display: none !important;
+    }
 }
