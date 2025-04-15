@@ -49,21 +49,17 @@ let isCalibrating = false;
 let calibrationStartTime = null;
 const CALIBRATION_DURATION = 8000; // 8 seconds in milliseconds
 
+let velocityHistory = [];
+//const VELOCITY_HISTORY_LENGTH = 60; // Match copHistoryLength default
+
+let forceHistory = [];
+let staticForceReference = null; // To store pre-swing total force reference
 
 
 // Default settings
 const settings = {
     clearTime: 5000,        // 5 seconds
-    historyLength: 1,      // Number of frames to keep in history
-    /*
-    //radius: 20,
-    radius: 40,
-    //blur: 0.75,
-    blur: 0.95,
-    //maxOpacity: 0.8,
-    maxOpacity: 0.6,
-    minOpacity: 0,
-    */    
+    historyLength: 1,      // Number of frames to keep in history    
     radius: 80,        // Increased from 40 to create larger, more blended points
     //radius: 30,        // mvoed back down to 30
     blur: 0.95,         // Adjusted for better blending
@@ -105,60 +101,13 @@ window.onload = function() {
     initializeCoPGraph(); // Add this line
       //if (debug == 1) console.log("initializeCoPGraph fcn run and returned"); 
     initializeCoPModeToggle(); // Add this line
+    initializeVelocityGraph(); // Add this line
+    initializeForceGraph();
     updateConnectionInfo('Heatmap initialized successfully');
       //if (debug == 1) console.log("updateConnectionInfo fcn run and returned"); 
     initializeCoPStats();
     initializeSwingControls();
-    initializeWeightDistributionControls();
-  
-    /*
-    try {
-        heatmapInstance = h337.create({
-            container: document.getElementById('heatmap'),
-            radius: settings.radius,
-            maxOpacity: settings.maxOpacity,
-            minOpacity: settings.minOpacity,
-            blur: settings.blur,
-            backgroundColor: 'rgba(0, 0, 58, 0.96)',  //blue  //with alpha so you can see through it  //higher alpha is less transparent
-                        
-            //gradient: {
-            //    '0.0': 'rgb(0, 0, 58)',      //blackish blue
-            //    '0.1': 'rgb(0, 0, 255)',     //blue
-            //    '0.2': 'rgb(128, 0, 255)',   //purple0
-            //    '0.3': 'rgb(0, 128, 255)',   //greenish blue
-            //    '0.4': 'rgb(0, 255, 255)',   //aqua
-            //    '0.5': 'rgb(0, 255, 128)',   //blueish green
-            //    '0.6': 'rgb(0, 255, 0)',     //green
-            //    '0.7': 'rgb(128, 255, 0)',   //yellowish green
-            //    '0.8': 'rgb(255, 255, 0)',   //yellow
-            //    '0.9': 'rgb(255, 128, 0)',   //orange
-            //    '1.0': 'rgb(255, 0, 0)'      //red
-            //}
-                        
-            gradient: {
-                '0.0': 'rgb(0, 0, 58)',      //blackish blue
-                '0.2': 'rgb(0, 0, 255)',     //blue
-                '0.6': 'rgb(0, 255, 255)',   //aqua
-                '0.8': 'rgb(0, 255, 0)',     //green
-                '0.9': 'rgb(255, 255, 0)',   //yellow
-                '1.0': 'rgb(255, 0, 0)'      //red
-            }            
-          
-        });
-          //if (debug == 1) console.log("h337 heatmap initialized"); 
-        initializeControls();
-          //if (debug == 1) console.log("initializeControls fcn run and returned"); 
-        initializeCoPGraph(); // Add this line
-          //if (debug == 1) console.log("initializeCoPGraph fcn run and returned"); 
-        updateConnectionInfo('Heatmap initialized successfully');
-          //if (debug == 1) console.log("updateConnectionInfo fcn run and returned"); 
-        initializeCoPStats();
-        initializeSwingControls();
-      
-    } catch (error) {
-        updateConnectionInfo('Error initializing heatmap: ' + error.message, true);
-    }
-    */
+    initializeWeightDistributionControls();  
   
 };
 
@@ -202,19 +151,6 @@ function initializeHeatmap(){
                 '0.9': 'rgb(255, 128, 0)',   //orange
                 '1.0': 'rgb(255, 0, 0)'      //red
             }
-            
-            
-          
-            /*
-            gradient: {
-                '0.0': 'rgb(0, 0, 58)',      //blackish blue
-                '0.2': 'rgb(0, 0, 255)',     //blue
-                '0.6': 'rgb(0, 255, 255)',   //aqua
-                '0.8': 'rgb(0, 255, 0)',     //green
-                '0.9': 'rgb(255, 255, 0)',   //yellow
-                '1.0': 'rgb(255, 0, 0)'      //red
-            }
-            */
           
         });
       
@@ -318,23 +254,11 @@ function updateSetting(setting, value) {
             break;
         
         case 'radius':
-            settings.radius = value;
-            /*
-            if (heatmapInstance) {
-                heatmapInstance.configure({ radius: value });
-                updateHeatmapWithHistory();
-            }
-            */
+            settings.radius = value;            
             initializeHeatmap();
             break;
         case 'blur':
-            settings.blur = value;
-            /*
-            if (heatmapInstance) {
-                heatmapInstance.configure({ blur: value });
-                updateHeatmapWithHistory();
-            }
-            */
+            settings.blur = value;            
             initializeHeatmap();
             break;
         case 'maxValue':
@@ -368,8 +292,12 @@ function updateSetting(setting, value) {
         case 'copHistoryLength':
             settings.copHistoryLength = value;
             copHistory = copHistory.slice(-value); // Trim CoP history if needed
+            velocityHistory = velocityHistory.slice(-value); // Add this line to trim velocity history
+            forceHistory = forceHistory.slice(-value); // Add this line to trim force history
             adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
             updateHeatmapWithHistory();
+            updateVelocityGraph(); // Add this line to update velocity graph after trimming
+            updateForceGraph(); // Add this line
             break;
         case 'matWidth':
         case 'matHeight':
@@ -421,6 +349,66 @@ function initializeCoPGraph() {
     Plotly.newPlot(container, [], layout);
 }
 
+
+function initializeVelocityGraph() {
+    const container = document.getElementById('velocity-graph');
+    container.innerHTML = '';
+
+    const layout = {
+        title: 'CoP Velocity Components',
+        xaxis: {
+            title: 'Time (s)',
+            showgrid: true,
+            zeroline: true
+        },
+        yaxis: {
+            title: 'Velocity (in/s)',
+            showgrid: true,
+            zeroline: true
+        },
+        showlegend: true
+    };
+
+    Plotly.newPlot(container, [], layout);
+}
+
+
+function initializeForceGraph() {
+    const container = document.getElementById('force-graph');
+    container.innerHTML = '';
+
+    const layout = {
+        title: 'Vertical Ground Reaction Force',
+        xaxis: {
+            title: 'Time (s)',
+            showgrid: true,
+            zeroline: true
+        },
+        yaxis: {
+            title: 'Force (% of static weight)',
+            showgrid: true,
+            zeroline: true
+        },
+        showlegend: true
+    };
+
+    Plotly.newPlot(container, [], layout);
+}
+
+
+// Add force graph clearing
+function clearForceGraph() {
+    forceHistory = [];
+    staticForceReference = null;
+    const container = document.getElementById('force-graph');
+    if (container) {
+        Plotly.newPlot(container, [], {
+            title: 'Vertical Ground Reaction Force',
+            xaxis: { title: 'Time (s)' },
+            yaxis: { title: 'Force (% of static weight)' }
+        });
+    }
+}
 
 
 function updateCoPGraph() {
@@ -505,23 +493,7 @@ function updateCoPGraph() {
             //tickformat: '0.1f',    // changed to 1 decimal place
             //dtick: 0.01        // Minimum tick increment of 0.01
             //dtick: 0.05,        // Minimum tick increment of 0.01
-            nticks: 10,            // Suggest number of ticks
-            /*
-            tickformatstops: [
-                {
-                    dtickrange: [null, 0.01],  // For very zoomed in views
-                    value: '.2f'
-                },
-                {
-                    dtickrange: [0.01, 0.1],   // For moderate zoom
-                    value: '.2f'
-                },
-                {
-                    dtickrange: [0.1, null],    // For zoomed out views
-                    value: '.1f'
-                }
-            ],
-            */
+            nticks: 10,            // Suggest number of ticks            
             exponentformat: 'none', // Prevent scientific notation
             showexponent: 'none'    // Prevent scientific notation
             
@@ -535,23 +507,7 @@ function updateCoPGraph() {
             //tickformat: '0.1f',    // changed to 1 decimal place
             //dtick: 0.01        // Minimum tick increment of 0.01            
             //dtick: 0.05,        // Minimum tick increment of 0.01            
-            nticks: 10,            // Suggest number of ticks
-            /*
-            tickformatstops: [
-                {
-                    dtickrange: [null, 0.01],  // For very zoomed in views
-                    value: '.2f'
-                },
-                {
-                    dtickrange: [0.01, 0.1],   // For moderate zoom
-                    value: '.2f'
-                },
-                {
-                    dtickrange: [0.1, null],    // For zoomed out views
-                    value: '.1f'
-                }
-            ],
-            */
+            nticks: 10,            // Suggest number of ticks            
             exponentformat: 'none', // Prevent scientific notation
             showexponent: 'none'    // Prevent scientific notation
             
@@ -564,6 +520,269 @@ function updateCoPGraph() {
 }
 
 
+// Add this function to calculate velocities
+function calculateVelocities(cop, timestamp) {
+    if (velocityHistory.length === 0) {
+        velocityHistory.push({
+            timestamp: timestamp,
+            vx: 0,
+            vy: 0
+        });
+        return { vx: 0, vy: 0 };
+    }
+
+    const prevPoint = velocityHistory[velocityHistory.length - 1];
+    const dt = (timestamp - prevPoint.timestamp) / 1000; // Convert to seconds
+    if (dt === 0) return { vx: 0, vy: 0 };
+
+    const inchesPerSensorX = settings.matWidth / settings.sensorsX;
+    const inchesPerSensorY = settings.matHeight / settings.sensorsY;
+
+    // Calculate position change in inches
+    const dx = (cop.x - prevPoint.x) * inchesPerSensorX;
+    const dy = (cop.y - prevPoint.y) * inchesPerSensorY;
+
+    // Calculate velocities in inches per second
+    const vx = dx / dt;
+    const vy = dy / dt;
+
+    // Store current position and velocities
+    velocityHistory.push({
+        timestamp: timestamp,
+        x: cop.x,
+        y: cop.y,
+        vx: vx,
+        vy: vy
+    });
+    
+    // Trim history using settings.copHistoryLength
+    if (velocityHistory.length > settings.copHistoryLength) {
+        velocityHistory = velocityHistory.slice(-settings.copHistoryLength);
+    }
+
+    return { vx, vy };
+}
+
+
+// Add this function to update the velocity graph
+function updateVelocityGraph() {
+    if (velocityHistory.length < 2) return;
+
+    //const startTime = velocityHistory[0].timestamp;
+    //const times = velocityHistory.map(point => (point.timestamp - startTime) / 1000);  
+    const mostRecentTime = velocityHistory[velocityHistory.length - 1].timestamp;
+    // Calculate times as negative values relative to most recent time
+    const times = velocityHistory.map(point => (point.timestamp - mostRecentTime) / 1000);
+    const vx = velocityHistory.map(point => point.vx);
+    const vy = velocityHistory.map(point => point.vy);
+
+    const lateralTrace = {
+        x: times,
+        y: vx,
+        //mode: 'lines',
+        mode: 'lines+markers',  // Add markers for data points
+        name: 'Lateral Velocity',
+        line: { color: 'blue' },
+        marker: {
+            size: 6,
+            color: 'blue'
+        }
+    };
+
+    const heelToeTrace = {
+        x: times,
+        y: vy,
+        //mode: 'lines',
+        mode: 'lines+markers',  // Add markers for data points
+        name: 'Heel-Toe Velocity',
+        line: { color: 'red' },
+        marker: {
+            size: 6,
+            color: 'red'
+        }
+    };
+  
+    const layout = {
+        title: 'CoP Velocity Components',
+        xaxis: {
+            title: 'Time (s)',
+            showgrid: true,
+            zeroline: true,
+            autorange: 'reversed',  // Reverse axis to show newest data on right
+            range: [-(settings.copHistoryLength / 30), 0]  // Assuming 30fps data rate
+        },
+        yaxis: {
+            title: 'Velocity (in/s)',
+            showgrid: true,
+            zeroline: true
+        },
+        showlegend: true
+    };
+  
+    Plotly.newPlot('velocity-graph', [lateralTrace, heelToeTrace], layout);
+  
+}
+
+
+
+
+// Add force calculation function
+function calculateForces(readings) {
+  
+    const method = document.querySelector('input[name="weightDistMethod"]:checked').value;
+    let totalPressure = 0;
+    let leftPressure = 0;
+    let rightPressure = 0;  
+    
+    if (method === 'calibrated' && stanceCalibrationData) {
+        // Use stance calibration boundaries
+        const boundaries = stanceCalibrationData;
+        
+        if (linearFit) {
+            // For linear relationship
+            totalPressure = readings.reduce((sum, r) => sum + r.value, 0);
+            const leftFootReadings = readings.filter(r => r.x <= boundaries.xRange.mid);
+            const rightFootReadings = readings.filter(r => r.x > boundaries.xRange.mid);
+            
+            leftPressure = leftFootReadings.reduce((sum, r) => sum + r.value, 0);      
+            rightPressure = rightFootReadings.reduce((sum, r) => sum + r.value, 0);
+        } else {
+            // For power fit relationship
+            totalPressure = readings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
+            const leftFootReadings = readings.filter(r => r.x <= boundaries.xRange.mid);
+            const rightFootReadings = readings.filter(r => r.x > boundaries.xRange.mid);
+            
+            leftPressure = leftFootReadings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);      
+            rightPressure = rightFootReadings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
+        }
+    } else {
+        // Use per-frame method
+        // Find min and max X values to determine left/right split
+        const xValues = readings.map(r => r.x);
+        const minX = Math.min(...xValues);
+        const maxX = Math.max(...xValues);
+        const xMidpoint = minX + (maxX - minX) / 2;
+
+        const leftFootReadings = readings.filter(r => r.x <= xMidpoint);
+        const rightFootReadings = readings.filter(r => r.x > xMidpoint);
+
+        if (linearFit) {
+            // For linear relationship
+            totalPressure = readings.reduce((sum, r) => sum + r.value, 0);
+            leftPressure = leftFootReadings.reduce((sum, r) => sum + r.value, 0);
+            rightPressure = rightFootReadings.reduce((sum, r) => sum + r.value, 0);
+        } else {
+            // For power fit relationship
+            totalPressure = readings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
+            leftPressure = leftFootReadings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
+            rightPressure = rightFootReadings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
+        }
+    }
+  
+    return {
+        total: totalPressure,
+        left: leftPressure,
+        right: rightPressure
+    };
+
+}
+
+// Add force history update function
+function updateForceHistory(forces, timestamp) {
+    forceHistory.push({
+        timestamp: timestamp,
+        total: forces.total,
+        left: forces.left,
+        right: forces.right
+    });
+
+    // Trim history using settings.copHistoryLength
+    if (forceHistory.length > settings.copHistoryLength) {
+        forceHistory = forceHistory.slice(-settings.copHistoryLength);
+    }
+}
+
+// Update real-time force graph
+function updateForceGraph() {
+    if (forceHistory.length < 2) return;
+
+    const mostRecentTime = forceHistory[forceHistory.length - 1].timestamp;    
+    const times = forceHistory.map(point => (point.timestamp - mostRecentTime) / 1000);
+    
+    // If we don't have a static reference, use the first value in history
+    const referenceForce = staticForceReference || forceHistory[0].total;    
+    
+    // Calculate percentages based on the current calculation method
+    let leftForces, rightForces, totalForces;
+    
+    if (linearFit) {
+        // For linear relationship - raw pressure values
+        leftForces = forceHistory.map(point => (point.left / point.total) * 100);
+        rightForces = forceHistory.map(point => (point.right / point.total) * 100);
+        totalForces = forceHistory.map(point => (point.total / referenceForce) * 100);
+    } else {
+        // For power fit relationship - converted to weight values
+        leftForces = forceHistory.map(point => (point.left / point.total) * 100);
+        rightForces = forceHistory.map(point => (point.right / point.total) * 100);
+        // For total force, we're already working with weight values from calculateForces
+        totalForces = forceHistory.map(point => (point.total / referenceForce) * 100);
+    }    
+
+    const traces = [
+        {
+            x: times,
+            y: leftForces,
+            mode: 'lines+markers',
+            name: 'Left Foot Force',
+            line: { color: 'blue' },
+            marker: { size: 6, color: 'blue' }
+        },
+        {
+            x: times,
+            y: rightForces,
+            mode: 'lines+markers',
+            name: 'Right Foot Force',
+            line: { color: 'red' },
+            marker: { size: 6, color: 'red' }
+        },
+        {
+            x: times,
+            y: totalForces,
+            mode: 'lines+markers',
+            name: 'Total Force',
+            line: { color: 'green' },
+            marker: { size: 6, color: 'green' }
+        }
+    ];
+
+    const layout = {
+        
+        //title: 'Vertical Ground Reaction Force',
+        
+        title: {
+            text: 'Vertical Ground Reaction Force' + (linearFit ? ' (Linear)' : ' (Power Fit)'),
+            font: { size: 16 }
+        },
+        
+        xaxis: {
+            title: 'Time (s)',
+            showgrid: true,
+            zeroline: true,
+            autorange: 'reversed',
+            range: [-(settings.copHistoryLength / 30), 0]
+        },
+        yaxis: {
+            title: 'Force (% of static weight)',
+            showgrid: true,
+            zeroline: true
+        },
+        showlegend: true
+    };
+
+    Plotly.newPlot('force-graph', traces, layout);
+}
+
+
 
 //updated to help prevent the heatmap not rendering correctly  //creates seperate overlay canvases
 // Create a debounced version of the update function
@@ -572,9 +791,6 @@ const debouncedUpdateHeatmap = debounce((dataHistory, copHistory, settings) => {
 //function updateHeatmapWithHistory() {
     if (!heatmapInstance || dataHistory.length === 0) return;
 
-    //const now = Date.now();  // timestamp since epoch in ms
-    //const maxAge = settings.historyLength * 1000;  // converts historyLength in seconds to milliseconds   
-  
     const histLen = settings.historyLength;  //mult by X (* 2) makes scale down more slowly  //divide by X ( / 1.5) makes the opacity scale downwards more quickly for each historical reading
 
     //these overwrite the minValue and maxValue set by the settings sliders
@@ -885,53 +1101,6 @@ function calculateCalibrationBoundaries(calibrationFrames) {
     };
 }
 
-
-/*
-//weight distribution calculation function before adding the 'calibration' option
-  //moved these calculations to a new function called calculatePressureDistributionPerFrame
-function calculatePressureDistribution(readings) {  //this is for the weight distribution stuff
-    if (!readings || readings.length === 0) return;
-
-    // Adjust X and Y coordinates based on inversion setting
-    const adjustedReadings = readings.map(reading => ({
-        ...reading,
-        adjustedX: settings.invertX ? (settings.sensorsX - reading.x) : reading.x,
-        adjustedY: settings.invertY ? (settings.sensorsY - reading.y) : reading.y      
-    }));
-  
-    if (debug == 4) console.log("adjustedReadings= " + adjustedReadings);
-
-    // Find min and max X values to determine front/back split
-    const xValues = adjustedReadings.map(r => r.adjustedX);
-    const minX = Math.min(...xValues);
-    const maxX = Math.max(...xValues);
-    const xMidpoint = minX + (maxX - minX) / 2;
-  
-    if (debug == 4) console.log("xMidpoint= " + xMidpoint + "   minX= " + minX + "   maxX= " + maxX);
-
-    // Separate front and back foot readings
-    //const frontFootReadings = adjustedReadings.filter(r => r.adjustedX >= xMidpoint); // before fixing inverts
-    //const backFootReadings = adjustedReadings.filter(r => r.adjustedX < xMidpoint);   // before fixing inverts
-    const frontFootReadings = adjustedReadings.filter(r => r.adjustedX <= xMidpoint);   // after fixing inverts
-    const backFootReadings = adjustedReadings.filter(r => r.adjustedX > xMidpoint);     // after fixing inverts
-
-    // Calculate total pressure
-    const totalPressure = adjustedReadings.reduce((sum, r) => sum + r.value, 0);
-
-    // Process front foot
-    const frontFootData = processFootData(frontFootReadings, totalPressure);
-
-    // Process back foot
-    const backFootData = processFootData(backFootReadings, totalPressure);
-
-    // Update display
-    updatePressureDisplay('front', frontFootData);
-    updatePressureDisplay('back', backFootData);
-}
-*/
-
-
-
 // Add this helper function to convert z-value to weight
 function zValueToWeight(zValue) {
     // Using the given equation: z = 1390.2 * x^0.1549  //this was taken from using water bucket to calibrate x12y6 of Golf-T-2000
@@ -1068,7 +1237,6 @@ function processFootData(footReadings, totalPressure) {
         heel: heelPercentage
     };
 }
-
 
 
 //for power fit relation between wegith and Z value
@@ -1209,7 +1377,6 @@ function processFootDataWithBoundaries(footReadings, totalPressure, boundaries) 
 }
 
 
-
 function updatePressureDisplay(foot, data) {
     document.getElementById(`${foot}-percentage`).textContent = data.total;
     document.getElementById(`${foot}-toe-percentage`).textContent = `Toe: ${data.toe}%`;
@@ -1313,22 +1480,7 @@ function processCoPData(readings, cop) {
             }
         ];
         */
-      
-        // Construct the frame for playback
-        //this isn't quite right, bec it's including multiple frames of data (the dataHistory length amount of frames)
-        /*
-        const frame = {
-            timestamp: timestamp,
-            pressure: dataHistory.flatMap(({ readings }) => readings.map(r => ({
-                x: settings.invertX ? (settings.sensorsX - r.x) : r.x,
-                y: settings.invertY ? (settings.sensorsY - r.y) : r.y,
-                value: r.value
-            }))),
-            //cop: { x: xInches, y: yInches }
-            cop: { x: copX, y: copY }
-        };
-        */
-      
+         
       
         //this is taken from updateRawData that also has readings passed in
         const frame = {
@@ -1442,12 +1594,6 @@ function setupSettingControl(settingName) {
 
 function checkSwingStop(currentTime, distance) {
     if (!recordingStarted) return false;
-    
-    // Check fixed duration stop condition
-    //if (currentTime >= settings.swingDuration) return true;
-    
-    // Check movement threshold stop condition
-    //if (distance <= settings.stopTriggerThreshold) return true;
   
     // Check fixed duration stop condition
     if (settings.useFixedDurationStop && currentTime >= settings.swingDuration) {
@@ -1464,16 +1610,7 @@ function checkSwingStop(currentTime, distance) {
 
 function stopSwing() {
     isRecording = false;
-    recordingStarted = false;
-    
-    // Prepare playback data  //this has been moved to the initializePlayback function
-    /*
-    playbackData = {
-        frames: copPathData,
-        pressureData: [], // You'll need to store pressure data for each frame
-        copStats: []     // Store CoP stats for each frame
-    };
-    */
+    recordingStarted = false;    
     
     // Show playback controls
     document.querySelector('.playback-controls').style.display = 'block';
@@ -1510,27 +1647,6 @@ function initializePlayback() {
         return;
     }
   
-    /*
-    // Reset playback state
-    isPlaying = true;
-    currentFrameIndex = 0;
-  
-    // Start playback
-    playbackInterval = setInterval(() => {
-        if (currentFrameIndex >= playbackData.length) {
-            stopPlayback();
-            return;
-        }
-
-        // Render the current frame
-        const frame = playbackData[currentFrameIndex];
-        renderFrame(frame);
-
-        currentFrameIndex++;
-    }, 100); // Adjust playback speed (100ms per frame)
-    */
-  
-
     //if (debug == 6) console.log("plabackData.length= " + playbackData.length);  
     //if (debug == 6) console.log("plabackData= " + playbackData);
     if (debug == 6) console.log("plabackData.length= ", playbackData.length);  
@@ -1542,48 +1658,6 @@ function initializePlayback() {
     currentFrameIndex = 0;
     showFrame(0);    
   
-}
-
-//I don't think that renderFrame function is called anymore.  
-  //I think the updateVisualizationsForFrame function is done instead
-function renderFrame(frame) {
-    if (!frame) return;
-  
-    if (debug == 5) console.log("renderFrame (below)");
-    if (debug == 5) console.log("frame.timestamp: " + frame.timestamp);
-    //if (debug == 5) console.log("frame.pressure: " + frame.pressure);
-    if (debug == 5) console.log("frame.pressure: ");
-    if (debug == 5) console.log(frame.pressure);
-    if (debug == 5) console.log("frame.cop.x: " + frame.cop.x + "   frame.cop.y: " + frame.cop.y);
-  
-
-    // Update heatmap
-    if (heatmapInstance && frame.pressure) {
-        heatmapInstance.setData({
-            min: 0,
-            max: settings.maxValue,
-            data: frame.pressure
-        });
-    }
-
-    // Update CoP graph
-    if (frame.cop) {
-        const trace = {
-            x: [frame.cop.x],
-            y: [frame.cop.y],
-            mode: 'markers',
-            type: 'scatter',
-            marker: { color: 'red', size: 8 }
-        };
-
-        const layout = {
-            title: 'Center of Pressure (CoP) Playback',
-            xaxis: { title: 'X Position (inches)' },
-            yaxis: { title: 'Y Position (inches)' }
-        };
-
-        Plotly.newPlot('cop-graph', [trace], layout);
-    }
 }
 
 
@@ -1631,10 +1705,14 @@ function updateVisualizationsForFrame(frame, frameIndex) {
     //drawing the recorded swing CoP on the heatmap in the update heatmap function now instead
     //drawRecordedSwingCoPOnHeatmap(frame.cop);  //draw the CoP overlay over the heatmap
   
-    updateCoPGraphWithRecordedSwing(frame.cop, frameIndex);    
+    updateCoPGraphWithRecordedSwing(frame.cop, frameIndex);
     
     //calculatePressureDistributionFromRecordedSwing(frame.pressure);  // Update weight distribution
     calculatePressureDistributionFromRecordedSwing(frame);  // Update weight distribution
+    
+    updateVelocityGraphWithRecordedSwing(frame, frameIndex);  // Add this line
+  
+    updateForceGraphWithRecordedSwing(frame, frameIndex);
     
     //prob don't want them to re-update, since they're calculated based on the full swing
     //updateCoPStatsForFrame(frame.cop);  // Update CoP stats //prob don't want them to re-update, since they're calculated based on the full swing    
@@ -1644,22 +1722,14 @@ function updateVisualizationsForFrame(frame, frameIndex) {
 }
 
 
-
 //function updateHeatmapWithRecordedSwing(pressureData) {
 //function updateHeatmapWithRecordedSwing(frame) {
 function updateHeatmapWithRecordedSwing(frame, frameIndex) {
     //if (!heatmapInstance || pressureData.length === 0) return;
-    if (!heatmapInstance || frame.pressure.length === 0) return;
-
-    //const now = Date.now();  //timestamp since epoch in ms
-    //const maxAge = settings.historyLength * 1000;  //converts historyLength in seconds to milliseconds
-  
-    //var minValue = 5000;   //seed min with largest possible value
-    //var maxValue = 0;      //seed max with smallest possible value
-    const pressureData = frame.pressure;
-  
-    //var minValue = Infinity;   // Start with the largest possible value
-    //var maxValue = -Infinity;  // Start with the smallest possible value
+    if (!heatmapInstance || frame.pressure.length === 0) return;    
+    
+    const pressureData = frame.pressure;  
+    
     let dataMinValue = Infinity;   // Start with the largest possible value
     let dataMaxValue = -Infinity;  // Start with the smallest possible value
   
@@ -1667,21 +1737,17 @@ function updateHeatmapWithRecordedSwing(frame, frameIndex) {
 
     // Get canvas dimensions and scaling factors
     const canvas = document.getElementById('heatmap');
-    //const scaleX = canvas.offsetWidth / settings.matWidth;
-    const scaleX = canvas.offsetWidth / settings.sensorsX;
-    //const scaleX = canvas.width / settings.sensorsX;
-    //const scaleY = canvas.offsetHeight / settings.matHeight;
-    const scaleY = canvas.offsetHeight / settings.sensorsY;
-    //const scaleY = canvas.height / settings.sensorsY;
+    
+    const scaleX = canvas.offsetWidth / settings.sensorsX;    
+    const scaleY = canvas.offsetHeight / settings.sensorsY;    
   
-    if (debug == 5) console.log("scaleX= " + scaleX + "   scaleY= " + scaleY);
-  
+    if (debug == 5) console.log("scaleX= " + scaleX + "   scaleY= " + scaleY);  
     
      // Process pressure data  //the inversion checking has already been done...
     pressureData.forEach((reading) => {
         // Scale coordinates to canvas size
         const xScaled = reading.x * scaleX;
-        //const yScaled = reading.y * scaleY;
+        
           //pressure data has already been properly inverted... but that's for cartesian
           //so for heatmap display, need to convert to screen coordinates (i.e. invert y again)          
         const yScaled = (settings.sensorsY - reading.y) * scaleY;
@@ -1705,31 +1771,12 @@ function updateHeatmapWithRecordedSwing(frame, frameIndex) {
     //if (debug == 5) console.log("maxValue= " + maxValue + "  minValue= " + minValue);
     //if (debug == 5) console.log("heatmap pressureData: (below) ");
     //if (debug == 5) console.log(pressureData);
-    if (debug == 5) {
-        console.log("maxValue= " + maxValue + "  minValue= " + minValue);
+    if (debug == 5) {        
         console.log("dataMaxValue= " + dataMaxValue + "  dataMinValue= " + dataMinValue);
         console.log("heatmap adjustedPressureData: ", adjustedPressureData);
     }
     //if (debug == 2) console.log("heatmap allDataPoints:");
     //if (debug == 2) console.log(allDataPoints);
-  
-    
-    //heatmapInstance.setData({ data: [] }); // Clear previous data
-  
-    /*
-    
-    // Update using addData instead of setData
-    heatmapInstance.configure({
-        min: 0,
-        max: settings.maxValue
-    });
-    
-    // Add new data points individually
-    allDataPoints.forEach(point => {
-        heatmapInstance.addData(point);
-    });
-    */
-  
   
     // Update heatmap data
     heatmapInstance.setData({
@@ -1739,23 +1786,8 @@ function updateHeatmapWithRecordedSwing(frame, frameIndex) {
         max: (dataMaxValue - 300),  //this gives the (overall max value)-300 counts the color of red - to ensure theres a lot of red on the heatmap
         //data: pressureData
         data: adjustedPressureData
-    });
+    });    
     
-    
-    //heatmapInstance.setDataMin(dataMinValue);  //this is especially bad, since it would set the activated point with the lowest reading to be dark blue and not show up at all
-    //heatmapInstance.setDataMax(dataMaxValue);  
-  
-    /*
-      //update suggested by Claude 3.5 using poe.com
-      //introduces a "slight variation" to force updates and also calls .addData instead of .setData
-    heatmapInstance.setData({
-        min: minValue,
-        max: maxValue,
-        data: allDataPoints
-    });
-    */
-  
-
     // Draw grid 
     //const canvas = document.getElementById('heatmap').querySelector('canvas');
     const canvas2 = document.getElementById('heatmap').querySelector('canvas');
@@ -1797,10 +1829,8 @@ function updateHeatmapWithRecordedSwing(frame, frameIndex) {
 
     //inversions already applied
 
-    // Scale coordinates to canvas size
-    //x = (x * canvas2.width) / settings.sensorsX;
-    x = (x * canvas2.offsetWidth) / settings.sensorsX;
-    //y = (y * canvas2.height) / settings.sensorsY;
+    // Scale coordinates to canvas size    
+    x = (x * canvas2.offsetWidth) / settings.sensorsX;    
     y = (y * canvas2.offsetHeight) / settings.sensorsY;
   
     if (debug == 5) console.log("scaled cop.x= " + x + "   scaled cop.y= " + y);
@@ -1810,10 +1840,6 @@ function updateHeatmapWithRecordedSwing(frame, frameIndex) {
     ctx.arc(x, y, 4, 0, Math.PI * 2);
     ctx.fill();
     
-    //ctx.restore();  //can't tell if these help or not.  commenting the save and restores out seems to maybe help a little on the heatmap problem
-  
-    //drawRecordedSwingCoPOnHeatmap();
-  
     //draw recorded swing history CoP on heatmap
     const slicedPlaybackData = playbackData.slice(0, frameIndex + 1);
   
@@ -1832,9 +1858,7 @@ function updateHeatmapWithRecordedSwing(frame, frameIndex) {
         y = settings.sensorsY - y;
       
         
-        // Scale coordinates to canvas size
-        //x = (x * canvas.width) / settings.sensorsX;
-        //y = (y * canvas.height) / settings.sensorsY;
+        // Scale coordinates to canvas size        
         x = (x * canvas2.offsetWidth) / settings.sensorsX;    
         y = (y * canvas2.offsetHeight) / settings.sensorsY;
 
@@ -1845,8 +1869,7 @@ function updateHeatmapWithRecordedSwing(frame, frameIndex) {
         }
     });
 
-    ctx.stroke();
-  
+    ctx.stroke();  
     
 }
 
@@ -1863,22 +1886,6 @@ function updateCoPGraphWithRecordedSwing(frame, frameIndex) {
   
     const slicedPlaybackData = playbackData.slice(0, frameIndex + 1);  //slice the playbackData array to the correct length based on the curent frame to show the history up through the current frame of the playback
   
-    // Prepare data for Plotly
-      //for coordinate display
-    //const xValues = slicedPlaybackData.map(slicedPlaybackData => slicedPlaybackData.cop.x);
-    //const yValues = slicedPlaybackData.map(slicedPlaybackData => slicedPlaybackData.cop.y);
-      
-      //for inches display
-    //const xValues = slicedPlaybackData.map(slicedPlaybackData => slicedPlaybackData.cop.x * inchesPerSensorX);
-    //const yValues = slicedPlaybackData.map(slicedPlaybackData => slicedPlaybackData.cop.y * inchesPerSensorY);
-  
-  
-    // Determine min and max values
-    //const xMin = Math.min(...xValues);
-    //const xMax = Math.max(...xValues);
-    //const yMin = Math.min(...yValues);
-    //const yMax = Math.max(...yValues);
-
     
     let xValues, yValues;
     let title, xAxisTitle, yAxisTitle;
@@ -1913,28 +1920,6 @@ function updateCoPGraphWithRecordedSwing(frame, frameIndex) {
         marker: { color: 'blue', size: 6 },
     };
 
-    
-    /*
-    // Prepare layout
-    const layout = {
-        title: 'Center of Pressure (CoP) Graph',
-        xaxis: {
-            title: 'X Position (inches)',
-            //title: 'X Position (coordinate)',
-            autorange: true,
-            //range: invertX ? [xMax + 1, xMin - 1] : [xMin - 1, xMax + 1], // Adjust range for inversion
-        },
-        yaxis: {
-            title: 'Y Position (inches)',
-            //title: 'Y Position (coordinate)',
-            autorange: true,
-            //range: invertY ? [yMax + 1, yMin - 1] : [yMin - 1, yMax + 1],  // Invert Y axis based on checkbox state
-            //range: invertY ? [yMin - 1, yMax + 1] : [yMax + 1, yMin - 1],  //this inverts it back again // Invert Y axis based on checkbox state
-        },
-    };
-    */
-  
-  
     const layout = {
         title: title,
         xaxis: {
@@ -1959,169 +1944,12 @@ function updateCoPGraphWithRecordedSwing(frame, frameIndex) {
             exponentformat: 'none', // Prevent scientific notation
             showexponent: 'none'    // Prevent scientific notation
         }
-    };
-  
+    };  
 
     // Update the graph
     Plotly.newPlot('cop-graph', [trace], layout);
 }
 
-
-/*
-//calculating with just the per-frame X and Y bounds for heel/toe and front foot/back foot
-function calculatePressureDistributionFromRecordedSwing(frame) {  //this is for the weight distribution stuff
-    //if (!readings || readings.length === 0) return;
-    if (!frame || frame.pressure.length === 0) return;
-  
-    const pressureData = frame.pressure;    
-  
-    if (debug == 4) console.log("pressureData= ", pressureData);
-
-    // Find min and max X values to determine front/back split
-    const xValues = pressureData.map(r => r.x);
-    const minX = Math.min(...xValues);
-    const maxX = Math.max(...xValues);
-    const xMidpoint = minX + (maxX - minX) / 2;
-  
-    if (debug == 4) console.log("xMidpoint= " + xMidpoint + "   minX= " + minX + "   maxX= " + maxX);
-
-    // Separate front and back foot readings
-    //const frontFootReadings = adjustedReadings.filter(r => r.adjustedX >= xMidpoint); // before fixing inverts
-    //const backFootReadings = adjustedReadings.filter(r => r.adjustedX < xMidpoint);   // before fixing inverts
-    const frontFootReadings = pressureData.filter(r => r.x <= xMidpoint);   // after fixing inverts
-    const backFootReadings = pressureData.filter(r => r.x > xMidpoint);     // after fixing inverts
-
-    // Calculate total pressure
-    const totalPressure = pressureData.reduce((sum, r) => sum + r.value, 0);
-
-    // Process front foot
-    const frontFootData = processFootDataFromRecordedSwing(frontFootReadings, totalPressure);
-
-    // Process back foot
-    const backFootData = processFootDataFromRecordedSwing(backFootReadings, totalPressure);
-
-    // Update display
-    updatePressureDisplayFromRecordedSwing('front', frontFootData);
-    updatePressureDisplayFromRecordedSwing('back', backFootData);
-}
-*/
-
-
-/*
-//calculating with just the per-frame X and Y bounds for heel/toe and front foot/back foot
-function processFootDataFromRecordedSwing(footReadings, totalPressure) {
-    if (footReadings.length === 0) return { total: 0, toe: 0, heel: 0 };
-
-    const footTotal = footReadings.reduce((sum, r) => sum + r.value, 0);
-    const footPercentage = Math.round((footTotal / totalPressure) * 100);
-
-    // Find toe/heel split based on this foot's data
-    //const yValues = footReadings.map(r => r.adjustedY);
-    const yValues = footReadings.map(r => r.y);
-    //const yMidpoint = (Math.min(...yValues) + Math.max(...yValues)) / 2;  //(min + max)/2 gives same as ((max-min)/2)+min
-    const minY = Math.min(...yValues);
-    const maxY = Math.max(...yValues);
-    const yMidpoint = minY + (maxY - minY) / 2;
-  
-    if (debug == 4) console.log("yMidpoint= " + yMidpoint + "   minY= " + minY + "   maxY= " + maxY);
-
-    //const toeReadings = footReadings.filter(r => r.adjustedY >= yMidpoint);  // <= xMidpoint
-    //const heelReadings = footReadings.filter(r => r.adjustedY < yMidpoint);  //  > xMidpoint
-    const toeReadings = footReadings.filter(r => r.y >= yMidpoint);  // <= xMidpoint
-    const heelReadings = footReadings.filter(r => r.y < yMidpoint);  //  > xMidpoint
-
-    const toeTotal = toeReadings.reduce((sum, r) => sum + r.value, 0);
-    const heelTotal = heelReadings.reduce((sum, r) => sum + r.value, 0);
-
-    const toePercentage = Math.round((toeTotal / footTotal) * 100);
-    const heelPercentage = Math.round((heelTotal / footTotal) * 100);
-
-    return {
-        total: footPercentage,
-        toe: toePercentage,
-        heel: heelPercentage
-    };
-}
-*/
-
-
-/*
-//this is now the function calculatePressureDistributionFromRecordedSwingUsingRecordedBoundaries below
-//updated for whole recording overall x and y bounds for heel/toe and front/back foot
-function calculatePressureDistributionFromRecordedSwing(frame) {
-    if (!playbackData || playbackData.length === 0 || !frame || frame.pressure.length === 0) return;
-
-    // First, analyze all frames to find overall boundaries
-    let overallMinX = Infinity;
-    let overallMaxX = -Infinity;
-    let frontFootMinY = Infinity;
-    let frontFootMaxY = -Infinity;
-    let backFootMinY = Infinity;
-    let backFootMaxY = -Infinity;
-
-    // Find overall X boundaries and initial foot separation point
-    playbackData.forEach(frameData => {
-        frameData.pressure.forEach(point => {
-            overallMinX = Math.min(overallMinX, point.x);
-            overallMaxX = Math.max(overallMaxX, point.x);
-        });
-    });
-
-    // Calculate the midpoint for front/back foot separation
-    const xMidpoint = overallMinX + (overallMaxX - overallMinX) / 2;
-
-    // Now find Y boundaries for each foot across all frames
-    playbackData.forEach(frameData => {
-        frameData.pressure.forEach(point => {
-            if (point.x <= xMidpoint) { // Front foot
-                frontFootMinY = Math.min(frontFootMinY, point.y);
-                frontFootMaxY = Math.max(frontFootMaxY, point.y);
-            } else { // Back foot
-                backFootMinY = Math.min(backFootMinY, point.y);
-                backFootMaxY = Math.max(backFootMaxY, point.y);
-            }
-        });
-    });
-
-    // Calculate midpoints for toe/heel separation for each foot
-    const frontFootYMidpoint = frontFootMinY + (frontFootMaxY - frontFootMinY) / 2;
-    const backFootYMidpoint = backFootMinY + (backFootMaxY - backFootMinY) / 2;
-
-    // Now process the current frame using these established boundaries
-    const pressureData = frame.pressure;
-    const totalPressure = pressureData.reduce((sum, r) => sum + r.value, 0);
-
-    // Separate front and back foot readings using the established xMidpoint
-    const frontFootReadings = pressureData.filter(r => r.x <= xMidpoint);
-    const backFootReadings = pressureData.filter(r => r.x > xMidpoint);
-
-    // Process front foot using established frontFootYMidpoint
-    const frontFootData = processFootDataFromRecordedSwingWithBoundaries(
-        frontFootReadings,
-        totalPressure,
-        frontFootYMidpoint
-    );
-
-    // Process back foot using established backFootYMidpoint
-    const backFootData = processFootDataFromRecordedSwingWithBoundaries(
-        backFootReadings,
-        totalPressure,
-        backFootYMidpoint
-    );
-
-    // Update display
-    updatePressureDisplayFromRecordedSwing('front', frontFootData);
-    updatePressureDisplayFromRecordedSwing('back', backFootData);
-
-    if (debug == 5) {
-        console.log("Overall boundaries:", {
-            xRange: { min: overallMinX, max: overallMaxX, mid: xMidpoint },
-            frontFoot: { minY: frontFootMinY, maxY: frontFootMaxY, midY: frontFootYMidpoint },
-            backFoot: { minY: backFootMinY, maxY: backFootMaxY, midY: backFootYMidpoint }
-        });
-    }
-}
-*/
 
 
 function calculatePressureDistributionFromRecordedSwing(frame) {
@@ -2356,19 +2184,214 @@ function updatePressureDisplayFromRecordedSwing(foot, data) {
 function updateRawDataWithRecordedSwing(frame) {
     const rawData = document.getElementById('raw-data');
     const frameTime = (frame.timestamp - startTime) / 1000;  //timestamps in ms / 1000 => seconds
-  
-    //rawData.innerHTML = `<div>[${frame.timestamp}] Recorded readings:</div>`;
+      
     rawData.innerHTML = `<div>[${frameTime.toFixed(3)}] Recorded readings:</div>`;
     
     frame.pressure.forEach(reading => {
         rawData.innerHTML += `<div>x: ${reading.x}, y: ${reading.y}, pressure: ${reading.value}</div>`;
     });
   
-    if (frame.cop) {
-        //rawData.innerHTML += `<div>CoP: x= ${cop.x}, y= ${cop.y}</div>`;  //this is for un-adjusted RAW data
+    if (frame.cop) {        
         rawData.innerHTML += `<div>CoP: x= ${frame.cop.x}, y= ${frame.cop.y}</div>`;  //this is for inversion-adjusted cartesion coordinate data display
     }
   
+}
+
+
+// Add new function for recorded swing velocity display
+function updateVelocityGraphWithRecordedSwing(frame, frameIndex) {
+    if (!playbackData || frameIndex < 1) return;
+
+    const startTime = playbackData[0].timestamp;
+    const slicedPlaybackData = playbackData.slice(0, frameIndex + 1);
+
+    // Calculate velocity data for all frames up to current index
+    const velocityData = slicedPlaybackData.map((frame, i) => {
+        if (i === 0) return { time: 0, vx: 0, vy: 0 };
+
+        const prevFrame = slicedPlaybackData[i - 1];
+        const dt = (frame.timestamp - prevFrame.timestamp) / 1000; // seconds
+        if (dt === 0) return { time: 0, vx: 0, vy: 0 };
+
+        const inchesPerSensorX = settings.matWidth / settings.sensorsX;
+        const inchesPerSensorY = settings.matHeight / settings.sensorsY;
+
+        const dx = (frame.cop.x - prevFrame.cop.x) * inchesPerSensorX;
+        const dy = (frame.cop.y - prevFrame.cop.y) * inchesPerSensorY;
+
+        return {
+            time: (frame.timestamp - startTime) / 1000,
+            vx: dx / dt,
+            vy: dy / dt
+        };
+    });
+
+    const times = velocityData.map(point => point.time);
+    const vx = velocityData.map(point => point.vx);
+    const vy = velocityData.map(point => point.vy);
+
+    const lateralTrace = {
+        x: times,
+        y: vx,
+        mode: 'lines+markers',  // Add markers for data points
+        name: 'Lateral Velocity',
+        line: { color: 'blue' },
+        marker: {
+            size: 6,
+            color: 'blue'
+        }
+    };
+
+    const heelToeTrace = {
+        x: times,
+        y: vy,
+        mode: 'lines+markers',  // Add markers for data points
+        name: 'Heel-Toe Velocity',
+        line: { color: 'red' },
+        marker: {
+            size: 6,
+            color: 'red'
+        }
+    };
+
+    const layout = {
+        title: 'CoP Velocity Components',
+        xaxis: {
+            title: 'Time (s)',
+            showgrid: true,
+            zeroline: true,
+            range: [0, Math.max(...times)]  // Start at 0, end at max time
+        },
+        yaxis: {
+            title: 'Velocity (in/s)',
+            showgrid: true,
+            zeroline: true
+        },
+        showlegend: true
+    };
+
+    Plotly.newPlot('velocity-graph', [lateralTrace, heelToeTrace], layout);
+}
+
+
+
+// Add function for recorded swing force display
+function updateForceGraphWithRecordedSwing(frame, frameIndex) {
+    if (!playbackData || frameIndex < 0) return;
+
+    const startTime = playbackData[0].timestamp;
+    const slicedPlaybackData = playbackData.slice(0, frameIndex + 1);
+
+    // Calculate static reference force from pre-trigger data
+    if (!staticForceReference) {
+        // Find the frame where recording was triggered
+        const triggerIndex = playbackData.findIndex((frame, i, arr) => {
+            if (i === 0) return false;
+            const prevFrame = arr[i - 1];
+            const dt = (frame.timestamp - prevFrame.timestamp) / 1000;
+            if (dt === 0) return false;
+
+            const inchesPerSensorX = settings.matWidth / settings.sensorsX;
+            const inchesPerSensorY = settings.matHeight / settings.sensorsY;
+            const dx = (frame.cop.x - prevFrame.cop.x) * inchesPerSensorX;            
+            const dy = (frame.cop.y - prevFrame.cop.y) * inchesPerSensorY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            return distance >= settings.copTriggerThreshold;
+        });
+
+        // Use average of pre-trigger frames as reference
+        if (triggerIndex > 0) {
+            const preTriggerFrames = playbackData.slice(0, triggerIndex);
+            staticForceReference = preTriggerFrames.reduce((sum, frame) => {
+                const forces = calculateForces(frame.pressure);
+                return sum + forces.total;
+            }, 0) / preTriggerFrames.length;
+        }
+    }
+
+    // Calculate force data for all frames up to current index
+    const forceData = slicedPlaybackData.map(frame => {
+        const forces = calculateForces(frame.pressure);
+        return {
+            time: (frame.timestamp - startTime) / 1000,
+            total: forces.total,
+            left: forces.left,
+            right: forces.right
+        };
+    });
+    
+    const times = forceData.map(point => point.time);
+    const totalRef = staticForceReference || forceData[0].total;
+  
+    // Calculate percentages based on the current calculation method
+    let leftForces, rightForces, totalForces;
+    
+    if (linearFit) {
+        // For linear relationship - raw pressure values
+        leftForces = forceData.map(point => (point.left / point.total) * 100);
+        rightForces = forceData.map(point => (point.right / point.total) * 100);
+        totalForces = forceData.map(point => (point.total / totalRef) * 100);
+    } else {
+        // For power fit relationship - converted to weight values
+        leftForces = forceData.map(point => (point.left / point.total) * 100);
+        rightForces = forceData.map(point => (point.right / point.total) * 100);
+        // For total force, we're already working with weight values from calculateForces
+        totalForces = forceData.map(point => (point.total / totalRef) * 100);
+    }
+  
+
+    const traces = [
+        {
+            x: times,
+            y: leftForces,
+            mode: 'lines+markers',
+            name: 'Left Foot Force',
+            line: { color: 'blue' },
+            marker: { size: 6, color: 'blue' }
+        },
+        {
+            x: times,
+            y: rightForces,
+            mode: 'lines+markers',
+            name: 'Right Foot Force',
+            line: { color: 'red' },
+            marker: { size: 6, color: 'red' }
+        },
+        {
+            x: times,
+            y: totalForces,
+            mode: 'lines+markers',
+            name: 'Total Force',
+            line: { color: 'green' },
+            marker: { size: 6, color: 'green' }
+        }
+    ];
+
+    const layout = {
+        
+        //title: 'Vertical Ground Reaction Force',
+        
+        title: {
+            text: 'Vertical Ground Reaction Force' + (linearFit ? ' (Linear)' : ' (Power Fit)'),
+            font: { size: 16 }
+        },
+        
+        xaxis: {
+            title: 'Time (s)',
+            showgrid: true,
+            zeroline: true,
+            range: [0, Math.max(...times)]
+        },
+        yaxis: {
+            title: 'Force (% of static weight)',
+            showgrid: true,
+            zeroline: true
+        },
+        showlegend: true
+    };
+
+    Plotly.newPlot('force-graph', traces, layout);
 }
 
 
@@ -2396,11 +2419,7 @@ function playReverse() {
     startPlayback(-1);
 }
 
-function startPlayback(direction) {
-    //const timePerFrameMs = 1000 / 30; // Assuming 30 fps
-    //const timePerFrameMs = 1000 / 10; // Assuming 10 fps
-    
-    //const frame = playbackData[frameIndex];
+function startPlayback(direction) {    
     const frameLength = playbackData.length;
     const startTime = playbackData[0].timestamp;
     const endTime = playbackData[frameLength - 1].timestamp;
@@ -2520,22 +2539,21 @@ function processFrame(frame) {
 
             // Trim CoP history if needed
             if (copHistory.length > settings.copHistoryLength) {
-                copHistory = copHistory.slice(-settings.copHistoryLength);
-                //copHistory.pop();  //didn't work
-                //copHistory.splice(0, 1);  //this deletes one element from the array at index 0  //i.e. it removes copHistory[0] and shifts everything left
+                copHistory = copHistory.slice(-settings.copHistoryLength);                
             }
           
             if (debug == 6) console.log("copHistory: ", copHistory);
           
+            // Add velocity calculation
+            const velocities = calculateVelocities(cop, lastDataTimestamp);
+            updateVelocityGraph();
+          
         }
-      
-      
-        //added this above instead, along with the checking of the calibration time
-        // Add this near where you process the frame  
-          //this stores the current readings when doing Stance Calibration      
-        //if (isCalibrating) {
-        //    stanceCalibrationData.push([...readings]); // Store a copy of the readings
-        //}
+        
+        // Add force calculations and updates
+        const forces = calculateForces(readings);
+        updateForceHistory(forces, lastDataTimestamp);
+        updateForceGraph();
       
       
         updateHeatmapWithHistory();
@@ -2561,9 +2579,24 @@ function processFrame(frame) {
         ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
       
         clearCoPGraph(); // Clear the CoP graph
+        clearVelocityGraph(); // Add this line
+        clearForceGraph();
         updateConnectionInfo('No data received for ' + (settings.clearTime / 1000) + ' seconds - display cleared');
     }, settings.clearTime);
     
+}
+
+
+function clearVelocityGraph() {
+    velocityHistory = [];
+    const container = document.getElementById('velocity-graph');
+    if (container) {
+        Plotly.newPlot(container, [], {
+            title: 'CoP Velocity Components',
+            xaxis: { title: 'Time (s)' },
+            yaxis: { title: 'Velocity (in/s)' }
+        });
+    }
 }
 
 
@@ -2769,9 +2802,6 @@ function handleDisconnection(event) {
     }
     
     updateStatus('Device disconnected');
-    
-    // Clear the device list
-    //document.getElementById('deviceList').innerHTML = '';
     
     // Reset variables
     characteristic = null;
