@@ -7,6 +7,7 @@
 
 // Configuration
 const CONFIG = {
+  
     DEBUG: {
         NONE: 0,
         BASIC: 1,
@@ -14,7 +15,7 @@ const CONFIG = {
         PLAYBACK: 5,
         DATA_RECORD: 6,
         CALIBRATION: 7,
-        level: 4 // Current debug level
+        level: 0 // Current debug level
     },
     
     BLE: {
@@ -61,6 +62,7 @@ const CONFIG = {
 
 // Utility Functions
 const Utils = {
+  
     debounce(func, wait) {
         let timeout;
         return function executedFunction(...args) {
@@ -94,6 +96,7 @@ const Utils = {
 
 // Logger Class
 class Logger {
+  
     static log(level, component, message, data = null) {
         if (level > CONFIG.DEBUG.level) return;
         
@@ -142,6 +145,7 @@ class Logger {
 
 // State Management
 class AppState {
+  
     constructor() {
         this.settings = { ...CONFIG.DEFAULTS };
         this.bluetooth = {
@@ -184,6 +188,7 @@ class AppState {
 
 // Data Processing Module
 class DataProcessor {
+  
     constructor(appState) {
         this.state = appState;
         Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Initialized with state:', {
@@ -203,9 +208,7 @@ class DataProcessor {
         }
         
       
-      
-      
-        try{
+        try {
 
             //const timestamp = Date.now();
             const { readings, cop } = this.parsePressureData(frame);          
@@ -217,7 +220,8 @@ class DataProcessor {
                 const timestamp = Date.now();
               
                 // Update histories
-                this.updateDataHistory(readings, timestamp);              
+                this.updateDataHistory(readings, timestamp); 
+                //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated data history');
                 Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated data history:', {
                     historyLength: this.state.visualization.dataHistory.length,
                     latestReadings: readings
@@ -225,11 +229,15 @@ class DataProcessor {
               
                 if (cop) {
                     this.updateCopHistory(cop, timestamp);
-                  
+                    //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated CoP history');
                     Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated CoP history:', {
                         historyLength: this.state.visualization.copHistory.length,
                         latestCoP: cop
                     });
+                  
+                    // Calculate velocities
+                    const velocities = this.calculateVelocities(cop, timestamp);
+                    Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Calculated velocities:', velocities);
                   
                 }
 
@@ -241,6 +249,7 @@ class DataProcessor {
                 // Calculate forces and update histories
                 const forces = this.calculateForces(readings);
                 this.updateForceHistory(forces, timestamp);
+                Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated force history');
 
                 // Process CoP data if recording
                 if (this.state.recording.isRecording) {
@@ -252,6 +261,9 @@ class DataProcessor {
                     copHistoryLength: this.state.visualization.copHistory.length,
                     forceHistoryLength: this.state.visualization.forceHistory.length
                 });
+              
+                // Update all visualizations
+                this.updateVisualizations({ readings, cop, forces, timestamp });
 
                 return { readings, cop, forces, timestamp };
             }
@@ -271,13 +283,35 @@ class DataProcessor {
         }, this.state.settings.clearTime);
       
     }
+  
+    updateVisualizations(data) {
+        if (this.state.app && this.state.app.visualizer) {
+            // Update heatmap
+            this.state.app.visualizer.updateHeatmap(data);
+
+            // Update CoP graph if we have CoP data
+            if (data.cop) {
+                this.state.app.visualizer.updateCoPGraph();
+            }
+
+            // Update velocity graph if we have velocity history
+            if (this.state.visualization.velocityHistory.length > 0) {
+                this.state.app.visualizer.updateVelocityGraph();
+            }
+
+            // Update force graph if we have force history
+            if (this.state.visualization.forceHistory.length > 0) {
+                this.state.app.visualizer.updateForceGraph();
+            }
+        }
+    }
     
     parsePressureData(data) {
         try {
             if (data === '[]') return { readings: [], cop: null };
             
             // Clean data and extract CoP
-            let cleanData = data.replace(/^\[{1,2}|\]{1,2}$/g, '');
+            let cleanData = data.replace(/^\[{1,2}|\]{1,2}$/g, '');            
             let copData = null;
             
             if (cleanData.includes('cop:')) {
@@ -299,7 +333,7 @@ class DataProcessor {
             Logger.log(CONFIG.DEBUG.ERROR, 'DataProcessor', 'Error parsing data', error);
             return { readings: [], cop: null };
         }
-    }
+    }  //end of processFrame method of DataProcessor class
     
     parseReading(reading) {
         const values = reading.replace(/{|}/g, '').split(',').map(Number);
@@ -308,6 +342,50 @@ class DataProcessor {
             y: values[1],
             value: values[2]
         };
+    }
+  
+    processCalibrationData(readings) {
+        if (!this.state.calibration.isCalibrating) return;
+
+        if (!this.state.calibration.data) {
+            this.state.calibration.data = {
+                startTime: Date.now(),
+                readings: []
+            };
+        }
+
+        this.state.calibration.data.readings.push(readings);
+
+        // Check if calibration duration has elapsed
+        const elapsed = Date.now() - this.state.calibration.data.startTime;
+        if (elapsed >= CONFIG.CALIBRATION.DURATION) {
+            this.completeCalibration();
+        }
+    }
+  
+    completeCalibration() {
+        this.state.calibration.isCalibrating = false;
+
+        // Process collected readings to determine boundaries
+        const allReadings = this.state.calibration.data.readings.flat();
+
+        const xValues = allReadings.map(r => r.x);
+        const yValues = allReadings.map(r => r.y);
+
+        this.state.calibration.data = {
+            xRange: {
+                min: Math.min(...xValues),
+                max: Math.max(...xValues),
+                mid: (Math.min(...xValues) + Math.max(...xValues)) / 2
+            },
+            yRange: {
+                min: Math.min(...yValues),
+                max: Math.max(...yValues),
+                mid: (Math.min(...yValues) + Math.max(...yValues)) / 2
+            }
+        };
+
+        Logger.log(CONFIG.DEBUG.CALIBRATION, 'Calibration', 'Calibration completed:', this.state.calibration.data);
     }
     
     updateDataHistory(readings, timestamp) {
@@ -337,6 +415,26 @@ class DataProcessor {
         
         // Calculate and update velocity history
         this.calculateVelocities(cop, timestamp);
+    }
+  
+    updateForceHistory(forces, timestamp) {
+        if (!forces) return;
+
+        this.state.visualization.forceHistory.push({
+            ...forces,
+            timestamp
+        });
+
+        // Trim history if needed
+        if (this.state.visualization.forceHistory.length > this.state.settings.copHistoryLength) {
+            this.state.visualization.forceHistory = 
+                this.state.visualization.forceHistory.slice(-this.state.settings.copHistoryLength);
+        }
+
+        Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated force history:', {
+            historyLength: this.state.visualization.forceHistory.length,
+            latestForces: forces
+        });
     }
     
     calculateVelocities(cop, timestamp) {
@@ -444,12 +542,14 @@ class DataProcessor {
         
         Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'All data cleared');
     }
-}
+  
+}  //end of class DataProcessor
 
 
 
 // Visualization Module
 class Visualizer {
+  
     constructor(appState) {
         this.state = appState;
         Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Initializing visualizer');
@@ -786,7 +886,11 @@ class Visualizer {
     
     updateCoPGraph() {
         const copHistory = this.state.visualization.copHistory;
-        if (!copHistory.length) return;
+        //if (!copHistory.length) return;
+        if (!copHistory || copHistory.length === 0) {
+            Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'No CoP history to display');
+            return;
+        }
         
         const inchesPerSensorX = this.state.settings.matWidth / this.state.settings.sensorsX;
         const inchesPerSensorY = this.state.settings.matHeight / this.state.settings.sensorsY;
@@ -847,7 +951,11 @@ class Visualizer {
     
     updateVelocityGraph() {
         const velocityHistory = this.state.visualization.velocityHistory;
-        if (velocityHistory.length < 2) return;
+        //if (velocityHistory.length < 2) return;
+        if (!velocityHistory || velocityHistory.length < 2) {
+            Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Insufficient velocity history to display');
+            return;
+        }
         
         const mostRecentTime = velocityHistory[velocityHistory.length - 1].timestamp;
         const times = velocityHistory.map(point => 
@@ -968,11 +1076,64 @@ class Visualizer {
         
         Plotly.newPlot('force-graph', traces, layout);
     }
-}
+  
+    clearAll() {
+        // Clear heatmap data
+        if (this.state.visualization.heatmapInstance) {
+            this.state.visualization.heatmapInstance.setData({ data: [] });
+        }
+
+        // Clear all histories
+        this.state.visualization.dataHistory = [];
+        this.state.visualization.copHistory = [];
+        this.state.visualization.velocityHistory = [];
+        this.state.visualization.forceHistory = [];
+
+        // Clear graphs
+        Plotly.newPlot('cop-graph', [], {
+            title: 'Center of Pressure (CoP) Graph',
+            xaxis: { title: 'X Position (coordinate)' },
+            yaxis: { title: 'Y Position (coordinate)' }
+        });
+
+        Plotly.newPlot('velocity-graph', [], {
+            title: 'CoP Velocity Components',
+            xaxis: { title: 'Time (s)' },
+            yaxis: { title: 'Velocity (in/s)' }
+        });
+
+        Plotly.newPlot('force-graph', [], {
+            title: 'Vertical Ground Reaction Force',
+            xaxis: { title: 'Time (s)' },
+            yaxis: { title: 'Force (% of static weight)' }
+        });
+
+        // Clear overlay canvas
+        const overlayCanvas = document.getElementById('heatmap-overlay');
+        if (overlayCanvas) {
+            const ctx = overlayCanvas.getContext('2d');
+            ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        }
+
+        // Reset pressure distribution display
+        document.getElementById('front-toe-percentage').textContent = 'Toe: 0%';
+        document.getElementById('front-percentage').textContent = '0';
+        document.getElementById('front-heel-percentage').textContent = 'Heel: 0%';
+        document.getElementById('back-toe-percentage').textContent = 'Toe: 0%';
+        document.getElementById('back-percentage').textContent = '0';
+        document.getElementById('back-heel-percentage').textContent = 'Heel: 0%';
+
+        Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'All visualizations cleared');
+      
+    }
+  
+  
+}  //end of class Visualizer
 
 
 // Bluetooth Connection Handler
 class BluetoothManager {
+  
     constructor(appState) {
         this.state = appState;
         this.maxRetryAttempts = CONFIG.BLE.MAX_RETRY_ATTEMPTS;
@@ -1136,25 +1297,34 @@ class BluetoothManager {
                 this.state.dataBuffer = '';
                 
                 // Clear visualizations
-                app.visualizer.clearAll();
+                this.state.app.visualizer.clearAll();
                 this.updateUIForConnection(false);
             }
+          
+          
+          
+          
+          
+          
+          
         } catch (error) {
             Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Disconnect failed', error);
             throw error;
         }
-    }
+    }  //end of disconnect method of BluetoothManager class
     
     updateUIForConnection(isConnected) {
         document.getElementById('disconnectButton').disabled = !isConnected;
         document.getElementById('scanButton').disabled = isConnected;
         document.getElementById('status').textContent = 
             isConnected ? 'Connected and receiving data' : 'Disconnected';
-    }
-}
+    }  
+  
+}  //end of class BluetoothManager
 
 // Swing Recording Manager
 class RecordingManager {
+  
     constructor(appState) {
         this.state = appState;
     }
@@ -1233,6 +1403,41 @@ class RecordingManager {
         
         this.state.recording.lastCopPosition = { x: xInches, y: yInches };
     }
+  
+    updateCoPStats(frame) {
+        if (!frame || !frame.cop) return;
+
+        const inchesPerSensorX = this.state.settings.matWidth / this.state.settings.sensorsX;
+        const inchesPerSensorY = this.state.settings.matHeight / this.state.settings.sensorsY;
+
+        // Convert sensor coordinates to inches
+        const xInches = frame.cop.x * inchesPerSensorX;
+        const yInches = frame.cop.y * inchesPerSensorY;
+
+        this.state.recording.copPathData.push({
+            x: xInches,
+            y: yInches,
+            timestamp: frame.timestamp
+        });
+
+        // Update stats if we have at least two points
+        if (this.state.recording.copPathData.length >= 2) {
+            const currentPoint = this.state.recording.copPathData[this.state.recording.copPathData.length - 1];
+            const prevPoint = this.state.recording.copPathData[this.state.recording.copPathData.length - 2];
+
+            const dt = (currentPoint.timestamp - prevPoint.timestamp) / 1000; // Convert to seconds
+            if (dt > 0) {
+                const dx = currentPoint.x - prevPoint.x;
+                const dy = currentPoint.y - prevPoint.y;
+                const speed = Math.sqrt(dx * dx + dy * dy) / dt;
+
+                this.state.recording.maxSpeedRecorded = Math.max(
+                    this.state.recording.maxSpeedRecorded,
+                    speed
+                );
+            }
+        }
+    }
     
     recordFrame(readings, cop, timestamp) {
         const frame = {
@@ -1278,13 +1483,15 @@ class RecordingManager {
         this.state.recording.recordingStarted = false;
         
         document.querySelector('.playback-controls').style.display = 'block';
-        app.playbackManager.initializePlayback();
+        this.state.app.playbackManager.initializePlayback();
     }
-}
+  
+}  //end of class RecordingManager {
 
 
 // Playback Manager
 class PlaybackManager {
+  
     constructor(appState) {
         this.state = appState;
         this.isPlaying = false;
@@ -1350,14 +1557,62 @@ class PlaybackManager {
             return;
         }
         
-        app.visualizer.updateHeatmap({ readings: frame.pressure, cop: frame.cop });
-        app.visualizer.updateCoPGraph();
-        app.visualizer.updateVelocityGraph();
-        app.visualizer.updateForceGraph();
+        this.state.app.visualizer.updateHeatmap({ readings: frame.pressure, cop: frame.cop });
+        this.state.app.visualizer.updateCoPGraph();
+        this.state.app.visualizer.updateVelocityGraph();
+        this.state.app.visualizer.updateForceGraph();
         
         this.updatePressureDistribution(frame);
         this.updateRawDataDisplay(frame);
     }
+  
+    updatePressureDistribution(frame) {
+        if (!frame || !frame.pressure) return;
+
+        // Calculate total pressure
+        const totalPressure = frame.pressure.reduce((sum, p) => sum + p.value, 0);
+        if (totalPressure === 0) return;
+
+        // Calculate midpoint for left/right foot separation
+        const xValues = frame.pressure.map(p => p.x);
+        const xMidpoint = (Math.min(...xValues) + Math.max(...xValues)) / 2;
+
+        // Separate readings by foot
+        const leftFoot = frame.pressure.filter(p => p.x <= xMidpoint);
+        const rightFoot = frame.pressure.filter(p => p.x > xMidpoint);
+
+        // Calculate percentages
+        const leftTotal = leftFoot.reduce((sum, p) => sum + p.value, 0);
+        const rightTotal = rightFoot.reduce((sum, p) => sum + p.value, 0);
+
+        const leftPercentage = ((leftTotal / totalPressure) * 100).toFixed(1);
+        const rightPercentage = ((rightTotal / totalPressure) * 100).toFixed(1);
+
+        // Update display
+        document.getElementById('front-percentage').textContent = leftPercentage;
+        document.getElementById('back-percentage').textContent = rightPercentage;
+    }
+
+    updateRawDataDisplay(frame) {
+        const rawData = document.getElementById('raw-data');
+        if (!rawData || !frame) return;
+
+        const timestamp = (frame.timestamp - this.state.recording.playbackData[0].timestamp) / 1000;
+
+        const data = {
+            time: timestamp.toFixed(3) + 's',
+            cop: frame.cop ? 
+                `(${frame.cop.x.toFixed(2)}, ${frame.cop.y.toFixed(2)})` : 
+                'N/A',
+            pressurePoints: frame.pressure.length
+        };
+
+        rawData.innerHTML = `
+            Time: ${data.time}
+            CoP: ${data.cop}
+            Active Sensors: ${data.pressurePoints}
+        `;
+    }  
     
     togglePlay() {
         if (this.isPlaying) {
@@ -1434,10 +1689,12 @@ class PlaybackManager {
         this.currentFrameIndex = index;
         this.showFrame(this.currentFrameIndex);
     }
-}
+  
+}  //end of class PlaybackManager
 
 // Main Application Class
 class PressureSensorApp {
+  
     constructor() {
         this.state = new AppState();
       
@@ -1451,7 +1708,7 @@ class PressureSensorApp {
         this.playbackManager = new PlaybackManager(this.state);
       
         // Set debug level to see all messages
-        CONFIG.DEBUG.level = CONFIG.DEBUG.BASIC;
+        //CONFIG.DEBUG.level = CONFIG.DEBUG.BASIC;
         
         this.initialize();
     }
@@ -1542,7 +1799,7 @@ class PressureSensorApp {
         }
     }
 	
-}
+}  //end of class PressureSensorApp {
 
 // Initialize application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
