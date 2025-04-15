@@ -1,2938 +1,1551 @@
+/**
+ * Pressure Sensor Visualization Application
+ * Version: 2.0.0
+ * Author: smoke14cu4
+ * Last Updated: 2025-04-15
+ */
 
-// BLE UUIDs
-const NORDIC_UART_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const NORDIC_UART_RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
-const NORDIC_UART_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
-
-const MICROCHIP_UART_SERVICE = '49535343-fe7d-4ae5-8fa9-9fafd205e455';
-const MICROCHIP_UART_TX = '49535343-1e4d-4bd9-ba61-23c647249616';
-const MICROCHIP_UART_RX = '49535343-8841-43f4-a8d4-ecbe34729bb3';
-
-const debug = 0;  //4 is for foot pressure %  //5 is for playback stuff  //6 shows recorded data  //set to 1 to allow console.log debug messages  //set to 0 to turn off
-
-let linearFit = true;  //set to true to use linear fit for weight calcs  //set to false to use power fit
-
-//let useMinThreshold = false;  //set to true to use a minimum threshold for weight calcs and CoP display  //set to false to disable this
-//let minThreshold = 1000;  //min threshold below which to ignore z readings for weight dist calcs and CoP calcs
-
-let bluetoothDevice;
-let characteristic;
-let heatmapInstance;
-let lastDataTimestamp = Date.now();
-//let clearTimeout;
-let myClearTimeout;
-let dataHistory = [];
-let dataBuffer = ''; // Buffer to store incomplete data chunks
-let copHistory = [];
-let copGraphCanvas;
-let copGraphCtx;
-
-let isRecording = false;
-let recordingStarted = false;
-let copPathData = [];
-let lastCopPosition = null;
-let startTime = null;
-let maxSpeedRecorded = 0;
-
-//let playbackData = null;
-let playbackData = [];
-let isPlaying = false;
-let playbackInterval = null;
-let currentFrameIndex = 0;
-let recordedReadings = [];
-
-let copMode = 'normal'; // Default mode
-
-//Weight Distribution Calculation Method Selection and Calibration Button variables
-let stanceCalibrationData = null;
-let isCalibrating = false;
-let calibrationStartTime = null;
-const CALIBRATION_DURATION = 8000; // 8 seconds in milliseconds
-
-let velocityHistory = [];
-//const VELOCITY_HISTORY_LENGTH = 60; // Match copHistoryLength default
-
-let forceHistory = [];
-let staticForceReference = null; // To store pre-swing total force reference
-
-
-// Default settings
-const settings = {
-    clearTime: 5000,        // 5 seconds
-    historyLength: 1,      // Number of frames to keep in history    
-    radius: 80,        // Increased from 40 to create larger, more blended points
-    //radius: 30,        // mvoed back down to 30
-    blur: 0.95,         // Adjusted for better blending
-    maxOpacity: 0.8,   // Increased for better visibility
-    minOpacity: 0.02,   // Increased to keep points visible longer  
-    //maxOpacity: 0.6,   // decreaded 
-    //minOpacity: 0,   // decreased tp 0 to try to not show so much history, even when history length set to 0  
-    maxValue: 2000,
-    minValue: 200,
-    copHistoryLength: 60,  //60 is good for controller fps of 30, so it's 2 seconds of CoP history
-    matWidth: 46,          // inches
-    matHeight: 22,         // inches
-    sensorsX: 23,          // number of sensors in X direction
-    sensorsY: 11,          // number of sensors in Y direction
-    invertX: true,        // invert X axis
-    invertY: false,         // invert Y axis
+// Configuration
+const CONFIG = {
+    DEBUG: {
+        NONE: 0,
+        BASIC: 1,
+        WEIGHT_CALC: 4,
+        PLAYBACK: 5,
+        DATA_RECORD: 6,
+        CALIBRATION: 7,
+        level: 4 // Current debug level
+    },
     
-    copTriggerThreshold: 0.2,  //0.1 was not quite enough to prevent false triggers //0.2 seemed pretty good  // inches - minimum movement to start recording  //0.5 was too much (started recording late)  //try 0.1
-    //inchesPerSensorX: settings.matWidth / settings.sensorsX,
-    //inchesPerSensorY: settings.matHeight / settings.sensorsY
-    swingDuration: 3.0,        // seconds
-    stopTriggerThreshold: 0.3, // inches - minimum movement to stop recording
-    playbackSpeed: 1.0,         // 1.0 = normal speed
-  
-    useFixedDurationStop: true,
-    useMovementThresholdStop: false
-
-  
+    BLE: {
+        NORDIC_UART_SERVICE: '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+        NORDIC_UART_RX: '6e400002-b5a3-f393-e0a9-e50e24dcca9e',
+        NORDIC_UART_TX: '6e400003-b5a3-f393-e0a9-e50e24dcca9e',
+        MICROCHIP_UART_SERVICE: '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+        MICROCHIP_UART_TX: '49535343-1e4d-4bd9-ba61-23c647249616',
+        MICROCHIP_UART_RX: '49535343-8841-43f4-a8d4-ecbe34729bb3',
+        MAX_RETRY_ATTEMPTS: 3,
+        RETRY_DELAY: 1000
+    },
+    
+    CALIBRATION: {
+        DURATION: 8000,
+        POWER_FIT_COEFFICIENT: 1390.2,
+        POWER_FIT_EXPONENT: 0.1549
+    },
+    
+    DEFAULTS: {
+        clearTime: 5000,
+        historyLength: 1,
+        radius: 80,
+        blur: 0.95,
+        maxOpacity: 0.8,
+        minOpacity: 0.02,
+        maxValue: 2000,
+        minValue: 200,
+        copHistoryLength: 60,
+        matWidth: 46,
+        matHeight: 22,
+        sensorsX: 23,
+        sensorsY: 11,
+        invertX: true,
+        invertY: false,
+        copTriggerThreshold: 0.2,
+        swingDuration: 3.0,
+        stopTriggerThreshold: 0.3,
+        playbackSpeed: 1.0,
+        useFixedDurationStop: true,
+        useMovementThresholdStop: false
+    }
 };
 
-// Initialize heatmap configuration remains the same...
-window.onload = function() {
-  
-    initializeHeatmap();
-  
-    //if (debug == 1) console.log("h337 heatmap initialized"); 
-    initializeControls();
-      //if (debug == 1) console.log("initializeControls fcn run and returned"); 
-    initializeCoPGraph(); // Add this line
-      //if (debug == 1) console.log("initializeCoPGraph fcn run and returned"); 
-    initializeCoPModeToggle(); // Add this line
-    initializeVelocityGraph(); // Add this line
-    initializeForceGraph();
-    updateConnectionInfo('Heatmap initialized successfully');
-      //if (debug == 1) console.log("updateConnectionInfo fcn run and returned"); 
-    initializeCoPStats();
-    initializeSwingControls();
-    initializeWeightDistributionControls();  
-  
-};
-
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
+// Utility Functions
+const Utils = {
+    debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
             clearTimeout(timeout);
-            func(...args);
+            timeout = setTimeout(later, wait);
         };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-}
+    },
 
+    calculateDistance(point1, point2) {
+        return Math.sqrt(
+            Math.pow(point2.x - point1.x, 2) + 
+            Math.pow(point2.y - point1.y, 2)
+        );
+    },
 
-function initializeHeatmap(){
-    try {
-      
-        adjustContainerDimensions(); // Add this line before creating heatmap instance
-      
-        heatmapInstance = h337.create({
-            container: document.getElementById('heatmap'),
-            radius: settings.radius,
-            maxOpacity: settings.maxOpacity,
-            minOpacity: settings.minOpacity,
-            blur: settings.blur,
-            backgroundColor: 'rgba(0, 0, 58, 0.96)',  //blue  //with alpha so you can see through it  //higher alpha is less transparent
-            
-            
-            gradient: {
-                '0.0': 'rgb(0, 0, 58)',      //blackish blue
-                '0.1': 'rgb(0, 0, 255)',     //blue
-                '0.2': 'rgb(128, 0, 255)',   //purple0
-                '0.3': 'rgb(0, 128, 255)',   //greenish blue
-                '0.4': 'rgb(0, 255, 255)',   //aqua
-                '0.5': 'rgb(0, 255, 128)',   //blueish green
-                '0.6': 'rgb(0, 255, 0)',     //green
-                '0.7': 'rgb(128, 255, 0)',   //yellowish green
-                '0.8': 'rgb(255, 255, 0)',   //yellow
-                '0.9': 'rgb(255, 128, 0)',   //orange
-                '1.0': 'rgb(255, 0, 0)'      //red
-            }
-          
-        });
-      
-    } catch (error) {
-        updateConnectionInfo('Error initializing heatmap: ' + error.message, true);
-    }
-  
-}
-
-
-// Initialize control sliders
-function initializeControls() {
-    // Add event listeners for all controls
-    //['clearTime', 'historyLength', 'radius', 'blur'].forEach(setting => {
-    //['clearTime', 'historyLength', 'radius', 'blur', 'copHistoryLength'].forEach(setting => {
-    //['clearTime', 'radius', 'blur', 'maxValue', 'historyLength', 'copHistoryLength'].forEach(setting => {
-    ['clearTime', 'radius', 'blur', 'maxValue', 'minValue', 'maxOpacity', 'minOpacity', 'historyLength', 'copHistoryLength'].forEach(setting => {
-        const input = document.getElementById(setting);
-        const slider = document.getElementById(setting + 'Slider');
-        //const checkbox = document.getElementById(setting);
-        
-        if (debug == 1) console.log("initializeControls fcn - foor loop for settings entered");
-      
-        input.addEventListener('input', (e) => {
-            slider.value = e.target.value;
-            updateSetting(setting, e.target.value);
-        });
-        
-        slider.addEventListener('input', (e) => {
-            input.value = e.target.value;
-            updateSetting(setting, e.target.value);
-        });      
-      
-    });  
-        
-    // Add event listeners for mat settings
-    ['matWidth', 'matHeight', 'sensorsX', 'sensorsY'].forEach(setting => {
-        const input = document.getElementById(setting);
-      
-        if (debug == 1) console.log("initializeControls fcn - foor loop for mat settings entered");
-      
-        input.addEventListener('input', (e) => {
-            input.value = e.target.value;
-            updateSetting(setting, e.target.value);
-        });
-    });  
+    zValueToWeight(zValue) {
+        return Math.pow(
+            (zValue / CONFIG.CALIBRATION.POWER_FIT_COEFFICIENT),
+            (1 / CONFIG.CALIBRATION.POWER_FIT_EXPONENT)
+        );
+    },
     
-    ['invertX', 'invertY'].forEach(setting => {
-        const checkbox = document.getElementById(setting);
+    formatTimestamp(ms) {
+        return (ms / 1000).toFixed(3);
+    }
+};
 
-        checkbox.addEventListener('change', (e) => {
-            settings[setting] = e.target.checked;
-            if (debug == 1) console.log(`${setting} changed to:`, e.target.checked);
-            adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
-            updateHeatmapWithHistory();
-            updateCoPGraph();
+// Logger Class
+class Logger {
+    static log(level, component, message, data = null) {
+        if (level > CONFIG.DEBUG.level) return;
+        
+        const timestamp = new Date().toISOString();
+        //const logMessage = `[${timestamp}][${component}] ${message}`;
+        const logBase = `[${timestamp}][${component}] ${message}`;
+        
+        /*
+        if (data) {
+            console.group(logMessage);
+            console.log('Data:', data);
+            console.groupEnd();
+        } else {
+            console.log(logMessage);
+        }
+        */
+      
+        // Properly handle data logging
+        if (data !== null && data !== undefined) {
+            console.group(logBase);
+            console.dir(data, { depth: null, colors: true });
+            console.groupEnd();
+        } else {
+            console.log(logBase);
+        }
+        
+        this.updateUI(message, level === CONFIG.DEBUG.ERROR);
+        
+    }
+    
+    static updateUI(message, isError = false) {
+        const connectionInfo = document.getElementById('connection-info');
+        if (!connectionInfo) return;
+      
+        const timestamp = new Date().toLocaleTimeString();
+        const color = isError ? '#ff4444' : '#4CAF50';
+        
+        connectionInfo.innerHTML += `
+            <div style="color: ${color}">
+                [${timestamp}] ${message}
+            </div>
+        `;
+        connectionInfo.scrollTop = connectionInfo.scrollHeight;
+    }
+}
+
+// State Management
+class AppState {
+    constructor() {
+        this.settings = { ...CONFIG.DEFAULTS };
+        this.bluetooth = {
+            device: null,
+            characteristic: null,
+            isConnected: false
+        };
+        this.visualization = {
+            heatmapInstance: null,
+            dataHistory: [],
+            copHistory: [],
+            velocityHistory: [],
+            forceHistory: []
+        };
+        this.recording = {
+            isRecording: false,
+            recordingStarted: false,
+            startTime: null,
+            lastCopPosition: null,
+            maxSpeedRecorded: 0,
+            copPathData: [],
+            playbackData: [],
+            staticForceReference: null
+        };
+        this.calibration = {
+            isCalibrating: false,
+            startTime: null,
+            data: null
+        };
+        this.dataBuffer = '';
+        this.clearTimeout = null;
+    }
+    
+    updateSetting(key, value) {
+        this.settings[key] = value;
+        Logger.log(CONFIG.DEBUG.BASIC, 'Settings', `Updated ${key} to ${value}`);
+    }
+}
+
+
+// Data Processing Module
+class DataProcessor {
+    constructor(appState) {
+        this.state = appState;
+        Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Initialized with state:', {
+            settings: this.state.settings
         });
-    });
-  
-}
+    }
+    
+    processFrame(frame) {
+        //if (!frame) return;
+        
+        //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Processing frame', frame);        
+        Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Raw frame received:', frame);
+      
+        // Clear previous timeout
+        if (this.state.clearTimeout) {
+            clearTimeout(this.state.clearTimeout);
+        }
+        
+      
+      
+      
+        try{
 
+            //const timestamp = Date.now();
+            const { readings, cop } = this.parsePressureData(frame);          
+            Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Parsed pressure data:', { readings, cop });
+            //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Parsed data:', { readings, cop });
 
-function initializeCoPModeToggle() {
-  
-    // Add event listeners
-    document.getElementById('normalMode').addEventListener('change', () => {
-        copMode = 'normal';
-        updateCoPGraph();
-    });
-    document.getElementById('deltaMode').addEventListener('change', () => {
-        copMode = 'delta';
-        updateCoPGraph();
-    });
-}
+            //if (readings.length > 0) {
+            if (readings && readings.length > 0) {
+                const timestamp = Date.now();
+              
+                // Update histories
+                this.updateDataHistory(readings, timestamp);              
+                Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated data history:', {
+                    historyLength: this.state.visualization.dataHistory.length,
+                    latestReadings: readings
+                });
+              
+                if (cop) {
+                    this.updateCopHistory(cop, timestamp);
+                  
+                    Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated CoP history:', {
+                        historyLength: this.state.visualization.copHistory.length,
+                        latestCoP: cop
+                    });
+                  
+                }
 
+                // Process calibration data if needed
+                if (this.state.calibration.isCalibrating) {
+                    this.processCalibrationData(readings);
+                }
 
-// Add this function to initialize the new controls
-function initializeWeightDistributionControls() {
-    const calibrateButton = document.getElementById('calibrateStanceButton');
-    calibrateButton.addEventListener('click', startStanceCalibration);
+                // Calculate forces and update histories
+                const forces = this.calculateForces(readings);
+                this.updateForceHistory(forces, timestamp);
 
-    // Add event listeners for method selection
-    document.getElementsByName('weightDistMethod').forEach(radio => {
-        radio.addEventListener('change', (e) => {
-            settings.weightDistMethod = e.target.value;
-            // Update both real-time and playback displays if needed
-            if (playbackData && playbackData.length > 0) {
-                showFrame(currentFrameIndex);
+                // Process CoP data if recording
+                if (this.state.recording.isRecording) {
+                    this.processCoPData(readings, cop, timestamp);
+                }
+
+                Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated histories', {
+                    dataHistoryLength: this.state.visualization.dataHistory.length,
+                    copHistoryLength: this.state.visualization.copHistory.length,
+                    forceHistoryLength: this.state.visualization.forceHistory.length
+                });
+
+                return { readings, cop, forces, timestamp };
             }
-        });
-    });
-}
 
-
-// Update setting values
-function updateSetting(setting, value) {
-    value = parseFloat(value);
-    switch(setting) {
-        case 'clearTime':
-            settings.clearTime = value * 1000; // Convert to milliseconds
-            break;
-        
-        case 'radius':
-            settings.radius = value;            
-            initializeHeatmap();
-            break;
-        case 'blur':
-            settings.blur = value;            
-            initializeHeatmap();
-            break;
-        case 'maxValue':
-            settings.maxValue = value;
-            initializeHeatmap();
-            adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
-            updateHeatmapWithHistory();
-            break;
-        case 'minValue':
-            settings.minValue = value;
-            initializeHeatmap();
-            adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
-            updateHeatmapWithHistory();
-            break;
-        case 'maxOpacity':
-            settings.maxOpacity = value;
-            initializeHeatmap();
-            adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
-            updateHeatmapWithHistory();
-            break;
-        case 'minOpacity':
-            settings.minOpacity = value;
-            initializeHeatmap();
-            adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
-            updateHeatmapWithHistory();            
-            break;
-        case 'historyLength':
-            settings.historyLength = value;
-            dataHistory = dataHistory.slice(-value); // Trim history if needed
-            break;
-        case 'copHistoryLength':
-            settings.copHistoryLength = value;
-            copHistory = copHistory.slice(-value); // Trim CoP history if needed
-            velocityHistory = velocityHistory.slice(-value); // Add this line to trim velocity history
-            forceHistory = forceHistory.slice(-value); // Add this line to trim force history
-            adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
-            updateHeatmapWithHistory();
-            updateVelocityGraph(); // Add this line to update velocity graph after trimming
-            updateForceGraph(); // Add this line
-            break;
-        case 'matWidth':
-        case 'matHeight':
-        case 'sensorsX':
-        case 'sensorsY':
-            settings[setting] = parseInt(value);
-            adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
-            updateHeatmapWithHistory();
-            updateCoPGraph();
-            break;
-        case 'invertX':
-        case 'invertY':
-            settings[setting] = value;
-            adjustContainerDimensions(); // Add this line before calling updateHeatmapWithHistory() function
-            updateHeatmapWithHistory();
-            updateCoPGraph();
-            break;        
-    }
-}
-
-function clearCoPGraph() {
-    if (copGraphCtx) {
-        copGraphCtx.clearRect(0, 0, copGraphCanvas.width, copGraphCanvas.height);
-    }
-}
-
-
-//initialize CoP graph - Plotly style
-function initializeCoPGraph() {
-    const container = document.getElementById('cop-graph');
-    container.innerHTML = ''; // Clear any existing content
-
-    // Create a Plotly graph
-    const layout = {
-        title: 'Center of Pressure (CoP) Graph',
-        xaxis: {
-            //title: 'X Position (inches)',
-            title: 'X Position (coordinate)',
-            autorange: true,
-        },
-        yaxis: {
-            //title: 'Y Position (inches)',
-            title: 'Y Position (coordinate)',
-            autorange: true,
-        },
-        showlegend: false,
-    };
-
-    Plotly.newPlot(container, [], layout);
-}
-
-
-function initializeVelocityGraph() {
-    const container = document.getElementById('velocity-graph');
-    container.innerHTML = '';
-
-    const layout = {
-        title: 'CoP Velocity Components',
-        xaxis: {
-            title: 'Time (s)',
-            showgrid: true,
-            zeroline: true
-        },
-        yaxis: {
-            title: 'Velocity (in/s)',
-            showgrid: true,
-            zeroline: true
-        },
-        showlegend: true
-    };
-
-    Plotly.newPlot(container, [], layout);
-}
-
-
-function initializeForceGraph() {
-    const container = document.getElementById('force-graph');
-    container.innerHTML = '';
-
-    const layout = {
-        title: 'Vertical Ground Reaction Force',
-        xaxis: {
-            title: 'Time (s)',
-            showgrid: true,
-            zeroline: true
-        },
-        yaxis: {
-            title: 'Force (% of static weight)',
-            showgrid: true,
-            zeroline: true
-        },
-        showlegend: true
-    };
-
-    Plotly.newPlot(container, [], layout);
-}
-
-
-// Add force graph clearing
-function clearForceGraph() {
-    forceHistory = [];
-    staticForceReference = null;
-    const container = document.getElementById('force-graph');
-    if (container) {
-        Plotly.newPlot(container, [], {
-            title: 'Vertical Ground Reaction Force',
-            xaxis: { title: 'Time (s)' },
-            yaxis: { title: 'Force (% of static weight)' }
-        });
-    }
-}
-
-
-function updateCoPGraph() {
-    if (!copHistory || copHistory.length < 1) return;
-
-    let inchesPerSensorX = settings.matWidth / settings.sensorsX;
-    let inchesPerSensorY = settings.matHeight / settings.sensorsY;
-
-    // Prepare data points based on mode
-    let xValues, yValues;
-    let title, xAxisTitle, yAxisTitle;
-
-    // First, adjust all points for inversion settings
-    const adjustedCoPHistory = copHistory.map(point => ({
-        x: settings.invertX ? (settings.sensorsX - point.x) : point.x,
-        y: settings.invertY ? (settings.sensorsY - point.y) : point.y,
-    }));
-
-    if (copMode === 'normal') {
-        // Normal mode - use absolute coordinates
-        if (settings.invertX) {
-            xValues = adjustedCoPHistory.map(point => point.x);
-        } else {
-            xValues = adjustedCoPHistory.map(point => point.x);
+        } catch (error) {
+            Logger.log(CONFIG.DEBUG.ERROR, 'DataProcessor', 'Error processing frame:', error);
         }
+      
+        return null;
+      
+      
+      
         
-        if (settings.invertY) {
-            yValues = adjustedCoPHistory.map(point => point.y);
-        } else {
-            yValues = adjustedCoPHistory.map(point => point.y);
-        }
-        
-        title = 'Center of Pressure (CoP) Graph';
-        xAxisTitle = 'X Position (coordinate)';
-        yAxisTitle = 'Y Position (coordinate)';
-    } else {
-        // Delta mode - calculate relative to oldest point
-        const basePoint = adjustedCoPHistory[0]; // Oldest point
-        
-        if (settings.invertX) {
-            xValues = adjustedCoPHistory.map(point => 
-                (point.x - basePoint.x) * inchesPerSensorX
-            );
-        } else {
-            xValues = adjustedCoPHistory.map(point => 
-                (point.x - basePoint.x) * inchesPerSensorX
-            );
-        }
-        
-        if (settings.invertY) {
-            yValues = adjustedCoPHistory.map(point => 
-                (point.y - basePoint.y) * inchesPerSensorY
-            );
-        } else {
-            yValues = adjustedCoPHistory.map(point => 
-                (point.y - basePoint.y) * inchesPerSensorY
-            );
-        }
-        
-        title = 'Center of Pressure (CoP) Delta';
-        xAxisTitle = 'X Delta (inches)';
-        yAxisTitle = 'Y Delta (inches)';
+        // Set clear timeout
+        this.state.clearTimeout = setTimeout(() => {
+            this.clearData();
+        }, this.state.settings.clearTime);
+      
     }
-
-    const trace = {
-        x: xValues,
-        y: yValues,
-        mode: 'lines+markers',
-        type: 'scatter',
-        marker: { color: 'blue', size: 6 },
-    };
-
-    // Prepare layout with axis directions based on inversion settings
-    const layout = {
-        title: title,
-        xaxis: {
-            title: xAxisTitle,
-            autorange: settings.invertX ? true : true, // You can change this to 'reverse' if needed
-            // autorange: settings.invertX ? 'reversed' : true, // Alternative if you want to reverse the axis            
-            //tickformat: '.2f',  // Format to 2 decimal places
-            tickformat: '0.2f',    // Changed from '.2f' to '0.2f' for better compatibility  
-            //tickformat: '0.1f',    // changed to 1 decimal place
-            //dtick: 0.01        // Minimum tick increment of 0.01
-            //dtick: 0.05,        // Minimum tick increment of 0.01
-            nticks: 10,            // Suggest number of ticks            
-            exponentformat: 'none', // Prevent scientific notation
-            showexponent: 'none'    // Prevent scientific notation
+    
+    parsePressureData(data) {
+        try {
+            if (data === '[]') return { readings: [], cop: null };
             
-        },
-        yaxis: {
-            title: yAxisTitle,
-            autorange: settings.invertY ? true : true, // You can change this to 'reverse' if needed
-            // autorange: settings.invertY ? 'reversed' : true, // Alternative if you want to reverse the axis
-            //tickformat: '.2f',  // Format to 2 decimal places
-            tickformat: '0.2f',    // Changed from '.2f' to '0.2f' for better compatibility
-            //tickformat: '0.1f',    // changed to 1 decimal place
-            //dtick: 0.01        // Minimum tick increment of 0.01            
-            //dtick: 0.05,        // Minimum tick increment of 0.01            
-            nticks: 10,            // Suggest number of ticks            
-            exponentformat: 'none', // Prevent scientific notation
-            showexponent: 'none'    // Prevent scientific notation
+            // Clean data and extract CoP
+            let cleanData = data.replace(/^\[{1,2}|\]{1,2}$/g, '');
+            let copData = null;
             
-        },
-        showlegend: false,
-    };
-
-    // Update the graph
-    Plotly.newPlot('cop-graph', [trace], layout);
-}
-
-
-// Add this function to calculate velocities
-function calculateVelocities(cop, timestamp) {
-    if (velocityHistory.length === 0) {
+            if (cleanData.includes('cop:')) {
+                const [pressureData, cop] = cleanData.split('cop:');
+                cleanData = pressureData.replace(/\]$/, '');
+                
+                const copCoords = cop.replace(/{|}|\s/g, '').split(',').map(Number);
+                copData = { x: copCoords[0], y: copCoords[1] };
+            }
+            
+            // Parse pressure readings
+            const readings = cleanData.includes('},{') ?
+                cleanData.split('},{').map(this.parseReading) :
+                [this.parseReading(cleanData)];
+            
+            return { readings, cop: copData };
+            
+        } catch (error) {
+            Logger.log(CONFIG.DEBUG.ERROR, 'DataProcessor', 'Error parsing data', error);
+            return { readings: [], cop: null };
+        }
+    }
+    
+    parseReading(reading) {
+        const values = reading.replace(/{|}/g, '').split(',').map(Number);
+        return {
+            x: values[0],
+            y: values[1],
+            value: values[2]
+        };
+    }
+    
+    updateDataHistory(readings, timestamp) {
+        this.state.visualization.dataHistory.push({
+            timestamp,
+            readings
+        });
+        
+        // Trim history if needed
+        if (this.state.visualization.dataHistory.length > this.state.settings.historyLength) {
+            this.state.visualization.dataHistory = 
+                this.state.visualization.dataHistory.slice(-this.state.settings.historyLength);
+        }
+    }
+    
+    updateCopHistory(cop, timestamp) {
+        this.state.visualization.copHistory.push({
+            ...cop,
+            timestamp
+        });
+        
+        // Trim history if needed
+        if (this.state.visualization.copHistory.length > this.state.settings.copHistoryLength) {
+            this.state.visualization.copHistory = 
+                this.state.visualization.copHistory.slice(-this.state.settings.copHistoryLength);
+        }
+        
+        // Calculate and update velocity history
+        this.calculateVelocities(cop, timestamp);
+    }
+    
+    calculateVelocities(cop, timestamp) {
+        const velocityHistory = this.state.visualization.velocityHistory;
+        
+        if (velocityHistory.length === 0) {
+            velocityHistory.push({
+                timestamp,
+                vx: 0,
+                vy: 0
+            });
+            return { vx: 0, vy: 0 };
+        }
+        
+        const prevPoint = velocityHistory[velocityHistory.length - 1];
+        const dt = (timestamp - prevPoint.timestamp) / 1000;
+        
+        if (dt === 0) return { vx: 0, vy: 0 };
+        
+        const inchesPerSensorX = this.state.settings.matWidth / this.state.settings.sensorsX;
+        const inchesPerSensorY = this.state.settings.matHeight / this.state.settings.sensorsY;
+        
+        const dx = (cop.x - prevPoint.x) * inchesPerSensorX;
+        const dy = (cop.y - prevPoint.y) * inchesPerSensorY;
+        
+        const vx = dx / dt;
+        const vy = dy / dt;
+        
         velocityHistory.push({
-            timestamp: timestamp,
-            vx: 0,
-            vy: 0
+            timestamp,
+            x: cop.x,
+            y: cop.y,
+            vx,
+            vy
         });
-        return { vx: 0, vy: 0 };
-    }
-
-    const prevPoint = velocityHistory[velocityHistory.length - 1];
-    const dt = (timestamp - prevPoint.timestamp) / 1000; // Convert to seconds
-    if (dt === 0) return { vx: 0, vy: 0 };
-
-    const inchesPerSensorX = settings.matWidth / settings.sensorsX;
-    const inchesPerSensorY = settings.matHeight / settings.sensorsY;
-
-    // Calculate position change in inches
-    const dx = (cop.x - prevPoint.x) * inchesPerSensorX;
-    const dy = (cop.y - prevPoint.y) * inchesPerSensorY;
-
-    // Calculate velocities in inches per second
-    const vx = dx / dt;
-    const vy = dy / dt;
-
-    // Store current position and velocities
-    velocityHistory.push({
-        timestamp: timestamp,
-        x: cop.x,
-        y: cop.y,
-        vx: vx,
-        vy: vy
-    });
-    
-    // Trim history using settings.copHistoryLength
-    if (velocityHistory.length > settings.copHistoryLength) {
-        velocityHistory = velocityHistory.slice(-settings.copHistoryLength);
-    }
-
-    return { vx, vy };
-}
-
-
-// Add this function to update the velocity graph
-function updateVelocityGraph() {
-    if (velocityHistory.length < 2) return;
-
-    //const startTime = velocityHistory[0].timestamp;
-    //const times = velocityHistory.map(point => (point.timestamp - startTime) / 1000);  
-    const mostRecentTime = velocityHistory[velocityHistory.length - 1].timestamp;
-    // Calculate times as negative values relative to most recent time
-    const times = velocityHistory.map(point => (point.timestamp - mostRecentTime) / 1000);
-    const vx = velocityHistory.map(point => point.vx);
-    const vy = velocityHistory.map(point => point.vy);
-
-    const lateralTrace = {
-        x: times,
-        y: vx,
-        //mode: 'lines',
-        mode: 'lines+markers',  // Add markers for data points
-        name: 'Lateral Velocity',
-        line: { color: 'blue' },
-        marker: {
-            size: 6,
-            color: 'blue'
-        }
-    };
-
-    const heelToeTrace = {
-        x: times,
-        y: vy,
-        //mode: 'lines',
-        mode: 'lines+markers',  // Add markers for data points
-        name: 'Heel-Toe Velocity',
-        line: { color: 'red' },
-        marker: {
-            size: 6,
-            color: 'red'
-        }
-    };
-  
-    const layout = {
-        title: 'CoP Velocity Components',
-        xaxis: {
-            title: 'Time (s)',
-            showgrid: true,
-            zeroline: true,
-            autorange: 'reversed',  // Reverse axis to show newest data on right
-            range: [-(settings.copHistoryLength / 30), 0]  // Assuming 30fps data rate
-        },
-        yaxis: {
-            title: 'Velocity (in/s)',
-            showgrid: true,
-            zeroline: true
-        },
-        showlegend: true
-    };
-  
-    Plotly.newPlot('velocity-graph', [lateralTrace, heelToeTrace], layout);
-  
-}
-
-
-
-
-// Add force calculation function
-function calculateForces(readings) {
-  
-    const method = document.querySelector('input[name="weightDistMethod"]:checked').value;
-    let totalPressure = 0;
-    let leftPressure = 0;
-    let rightPressure = 0;  
-    
-    if (method === 'calibrated' && stanceCalibrationData) {
-        // Use stance calibration boundaries
-        const boundaries = stanceCalibrationData;
         
-        if (linearFit) {
-            // For linear relationship
-            totalPressure = readings.reduce((sum, r) => sum + r.value, 0);
-            const leftFootReadings = readings.filter(r => r.x <= boundaries.xRange.mid);
-            const rightFootReadings = readings.filter(r => r.x > boundaries.xRange.mid);
+        // Trim velocity history
+        if (velocityHistory.length > this.state.settings.copHistoryLength) {
+            this.state.visualization.velocityHistory = 
+                velocityHistory.slice(-this.state.settings.copHistoryLength);
+        }
+        
+        return { vx, vy };
+    }
+    
+    calculateForces(readings) {
+        const method = document.querySelector('input[name="weightDistMethod"]:checked').value;
+        const useLinearFit = true; // Could be made configurable
+        
+        let totalPressure = 0;
+        let leftPressure = 0;
+        let rightPressure = 0;
+        
+        if (method === 'calibrated' && this.state.calibration.data) {
+            const boundaries = this.state.calibration.data;
             
-            leftPressure = leftFootReadings.reduce((sum, r) => sum + r.value, 0);      
-            rightPressure = rightFootReadings.reduce((sum, r) => sum + r.value, 0);
+            if (useLinearFit) {
+                totalPressure = readings.reduce((sum, r) => sum + r.value, 0);
+                const leftFootReadings = readings.filter(r => r.x <= boundaries.xRange.mid);
+                const rightFootReadings = readings.filter(r => r.x > boundaries.xRange.mid);
+                
+                leftPressure = leftFootReadings.reduce((sum, r) => sum + r.value, 0);
+                rightPressure = rightFootReadings.reduce((sum, r) => sum + r.value, 0);
+            } else {
+                totalPressure = readings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+                const leftFootReadings = readings.filter(r => r.x <= boundaries.xRange.mid);
+                const rightFootReadings = readings.filter(r => r.x > boundaries.xRange.mid);
+                
+                leftPressure = leftFootReadings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+                rightPressure = rightFootReadings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+            }
         } else {
-            // For power fit relationship
-            totalPressure = readings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
-            const leftFootReadings = readings.filter(r => r.x <= boundaries.xRange.mid);
-            const rightFootReadings = readings.filter(r => r.x > boundaries.xRange.mid);
+            // Use per-frame method
+            const xValues = readings.map(r => r.x);
+            const minX = Math.min(...xValues);
+            const maxX = Math.max(...xValues);
+            const xMidpoint = minX + (maxX - minX) / 2;
             
-            leftPressure = leftFootReadings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);      
-            rightPressure = rightFootReadings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
+            const leftFootReadings = readings.filter(r => r.x <= xMidpoint);
+            const rightFootReadings = readings.filter(r => r.x > xMidpoint);
+            
+            if (useLinearFit) {
+                totalPressure = readings.reduce((sum, r) => sum + r.value, 0);
+                leftPressure = leftFootReadings.reduce((sum, r) => sum + r.value, 0);
+                rightPressure = rightFootReadings.reduce((sum, r) => sum + r.value, 0);
+            } else {
+                totalPressure = readings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+                leftPressure = leftFootReadings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+                rightPressure = rightFootReadings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+            }
         }
-    } else {
-        // Use per-frame method
-        // Find min and max X values to determine left/right split
-        const xValues = readings.map(r => r.x);
-        const minX = Math.min(...xValues);
-        const maxX = Math.max(...xValues);
-        const xMidpoint = minX + (maxX - minX) / 2;
-
-        const leftFootReadings = readings.filter(r => r.x <= xMidpoint);
-        const rightFootReadings = readings.filter(r => r.x > xMidpoint);
-
-        if (linearFit) {
-            // For linear relationship
-            totalPressure = readings.reduce((sum, r) => sum + r.value, 0);
-            leftPressure = leftFootReadings.reduce((sum, r) => sum + r.value, 0);
-            rightPressure = rightFootReadings.reduce((sum, r) => sum + r.value, 0);
-        } else {
-            // For power fit relationship
-            totalPressure = readings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
-            leftPressure = leftFootReadings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
-            rightPressure = rightFootReadings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
-        }
+        
+        return { total: totalPressure, left: leftPressure, right: rightPressure };
     }
-  
-    return {
-        total: totalPressure,
-        left: leftPressure,
-        right: rightPressure
-    };
-
-}
-
-// Add force history update function
-function updateForceHistory(forces, timestamp) {
-    forceHistory.push({
-        timestamp: timestamp,
-        total: forces.total,
-        left: forces.left,
-        right: forces.right
-    });
-
-    // Trim history using settings.copHistoryLength
-    if (forceHistory.length > settings.copHistoryLength) {
-        forceHistory = forceHistory.slice(-settings.copHistoryLength);
+    
+    clearData() {
+        this.state.visualization.dataHistory = [];
+        this.state.visualization.copHistory = [];
+        this.state.visualization.velocityHistory = [];
+        this.state.visualization.forceHistory = [];
+        
+        if (this.state.visualization.heatmapInstance) {
+            this.state.visualization.heatmapInstance.setData({ data: [] });
+        }
+        
+        Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'All data cleared');
     }
 }
 
-// Update real-time force graph
-function updateForceGraph() {
-    if (forceHistory.length < 2) return;
 
-    const mostRecentTime = forceHistory[forceHistory.length - 1].timestamp;    
-    const times = forceHistory.map(point => (point.timestamp - mostRecentTime) / 1000);
-    
-    // If we don't have a static reference, use the first value in history
-    const referenceForce = staticForceReference || forceHistory[0].total;    
-    
-    // Calculate percentages based on the current calculation method
-    let leftForces, rightForces, totalForces;
-    
-    if (linearFit) {
-        // For linear relationship - raw pressure values
-        leftForces = forceHistory.map(point => (point.left / point.total) * 100);
-        rightForces = forceHistory.map(point => (point.right / point.total) * 100);
-        totalForces = forceHistory.map(point => (point.total / referenceForce) * 100);
-    } else {
-        // For power fit relationship - converted to weight values
-        leftForces = forceHistory.map(point => (point.left / point.total) * 100);
-        rightForces = forceHistory.map(point => (point.right / point.total) * 100);
-        // For total force, we're already working with weight values from calculateForces
-        totalForces = forceHistory.map(point => (point.total / referenceForce) * 100);
-    }    
 
-    const traces = [
-        {
-            x: times,
-            y: leftForces,
-            mode: 'lines+markers',
-            name: 'Left Foot Force',
-            line: { color: 'blue' },
-            marker: { size: 6, color: 'blue' }
-        },
-        {
-            x: times,
-            y: rightForces,
-            mode: 'lines+markers',
-            name: 'Right Foot Force',
-            line: { color: 'red' },
-            marker: { size: 6, color: 'red' }
-        },
-        {
-            x: times,
-            y: totalForces,
-            mode: 'lines+markers',
-            name: 'Total Force',
-            line: { color: 'green' },
-            marker: { size: 6, color: 'green' }
+// Visualization Module
+class Visualizer {
+    constructor(appState) {
+        this.state = appState;
+        Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Initializing visualizer');
+      
+        try{
+            this.initializeHeatmap();
+            this.initializeGraphs();
+            Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Visualization components initialized');
+        } catch (error) {
+            Logger.log(CONFIG.DEBUG.ERROR, 'Visualizer', 'Error initializing visualizer:', error);
         }
-    ];
-
-    const layout = {
-        
-        //title: 'Vertical Ground Reaction Force',
-        
-        title: {
-            text: 'Vertical Ground Reaction Force' + (linearFit ? ' (Linear)' : ' (Power Fit)'),
-            font: { size: 16 }
-        },
-        
-        xaxis: {
-            title: 'Time (s)',
-            showgrid: true,
-            zeroline: true,
-            autorange: 'reversed',
-            range: [-(settings.copHistoryLength / 30), 0]
-        },
-        yaxis: {
-            title: 'Force (% of static weight)',
-            showgrid: true,
-            zeroline: true
-        },
-        showlegend: true
-    };
-
-    Plotly.newPlot('force-graph', traces, layout);
-}
-
-
-
-//updated to help prevent the heatmap not rendering correctly  //creates seperate overlay canvases
-// Create a debounced version of the update function
-const debouncedUpdateHeatmap = debounce((dataHistory, copHistory, settings) => {
-//function debouncedUpdateHeatmap(dataHistory, copHistory, settings) {
-//function updateHeatmapWithHistory() {
-    if (!heatmapInstance || dataHistory.length === 0) return;
-
-    const histLen = settings.historyLength;  //mult by X (* 2) makes scale down more slowly  //divide by X ( / 1.5) makes the opacity scale downwards more quickly for each historical reading
-
-    //these overwrite the minValue and maxValue set by the settings sliders
-    //let minValue = Infinity;   // Start with the largest possible value
-    //let maxValue = -Infinity;  // Start with the smallest possible value  
-    let dataMinValue = Infinity;   // Start with the largest possible value
-    let dataMaxValue = -Infinity;  // Start with the smallest possible value
-
-    // Get canvas dimensions and scaling factors
-    const container = document.getElementById('heatmap-container');
-    const canvas = document.getElementById('heatmap');
-  
-    const scaleX = container.offsetWidth / settings.sensorsX;    
-    const scaleY = container.offsetHeight / settings.sensorsY; 
-  
-    var counter = 0;
+      
+    }
     
-    // Process and scale the data points
-    const allDataPoints = [];
-    for (const { timestamp, readings } of dataHistory) {
-        //const age = now - timestamp;
-        //const opacity = Math.max(settings.minOpacity, 1 - (age / maxAge));
-        //if (debug == 5) console.log("age= " + age + "   maxAge= " + maxAge + "   opacity= " + opacity);
+    /*
+    initializeHeatmap() {
+        this.adjustContainerDimensions();
         
-        const opacity = Math.min(settings.maxOpacity, (Math.max(settings.minOpacity, 1 - (counter / histLen))));
-        if (debug == 5) console.log("counter=" + counter + "  historyLength=" + histLen + "  counter/historyLength=" + (counter / histLen) + "  1-counter/historyLength=" + (1 - (counter / histLen)) + "  opacity=" + opacity);
+        this.state.visualization.heatmapInstance = h337.create({
+            container: document.getElementById('heatmap'),
+            radius: this.state.settings.radius,
+            maxOpacity: this.state.settings.maxOpacity,
+            minOpacity: this.state.settings.minOpacity,
+            blur: this.state.settings.blur,
+            backgroundColor: 'rgba(0, 0, 58, 0.96)',
+            gradient: {
+                '0.0': 'rgb(0, 0, 58)',
+                '0.1': 'rgb(0, 0, 255)',
+                '0.2': 'rgb(128, 0, 255)',
+                '0.3': 'rgb(0, 128, 255)',
+                '0.4': 'rgb(0, 255, 255)',
+                '0.5': 'rgb(0, 255, 128)',
+                '0.6': 'rgb(0, 255, 0)',
+                '0.7': 'rgb(128, 255, 0)',
+                '0.8': 'rgb(255, 255, 0)',
+                '0.9': 'rgb(255, 128, 0)',
+                '1.0': 'rgb(255, 0, 0)'
+            }
+        });
         
-        counter++;
-
-        for (const reading of readings) {
-            let x = reading.x;
-            let y = reading.y;
-
-            // Apply inversion if enabled
-            if (settings.invertX) {
-                x = settings.sensorsX - x;
-            }
-            if (!settings.invertY) {
-                y = settings.sensorsY - y;
-            }
-
-            // Scale coordinates to canvas size
-            const xScaled = x * scaleX;
-            const yScaled = y * scaleY;
-
-            //if (maxValue < reading.value) maxValue = reading.value;
-            //if (minValue > reading.value) minValue = reading.value;
-            if (dataMaxValue < reading.value) dataMaxValue = reading.value;
-            if (dataMinValue > reading.value) dataMinValue = reading.value;
-          
-          
-            allDataPoints.push({
-                x: xScaled,
-                y: yScaled,
-                value: reading.value,
-                opacity: opacity
+        Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Heatmap initialized');
+    }
+    */
+  
+  
+    initializeHeatmap() {
+        const container = document.getElementById('heatmap-container');
+        const heatmapElement = document.getElementById('heatmap');
+        
+        if (!container || !heatmapElement) {
+            throw new Error('Required heatmap elements not found in DOM');
+        }
+        
+        Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Container dimensions:', {
+            width: container.offsetWidth,
+            height: container.offsetHeight
+        });
+        
+        this.adjustContainerDimensions();
+        
+        try {
+            this.state.visualization.heatmapInstance = h337.create({
+                container: heatmapElement,
+                radius: this.state.settings.radius,
+                maxOpacity: this.state.settings.maxOpacity,
+                minOpacity: this.state.settings.minOpacity,
+                blur: this.state.settings.blur,
+                backgroundColor: 'rgba(0, 0, 58, 0.96)',
+                gradient: {
+                    '0.0': 'rgb(0, 0, 58)',
+                    '0.1': 'rgb(0, 0, 255)',
+                    '0.2': 'rgb(128, 0, 255)',
+                    '0.3': 'rgb(0, 128, 255)',
+                    '0.4': 'rgb(0, 255, 255)',
+                    '0.5': 'rgb(0, 255, 128)',
+                    '0.6': 'rgb(0, 255, 0)',
+                    '0.7': 'rgb(128, 255, 0)',
+                    '0.8': 'rgb(255, 255, 0)',
+                    '0.9': 'rgb(255, 128, 0)',
+                    '1.0': 'rgb(255, 0, 0)'
+                }
             });
             
+            Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Heatmap instance created');
+        } catch (error) {
+            Logger.log(CONFIG.DEBUG.ERROR, 'Visualizer', 'Error creating heatmap instance:', error);
+            throw error;
         }
     }
-
-    // Update heatmap data
-    heatmapInstance.setData({
-        //min: dataMinValue,  //this uses the overall min value of the datapoints  - this will cause valid data to be blue - this will mask active points - NOT GOOD
-        min: settings.minValue,  //this uses the min value set in the settings
-        //max: dataMaxValue,  //this uses the overall max value of the datapoints - this will make sure that there is red on the heatmap
-        max: (dataMaxValue - 300),  //this gives the (overall max value)-300 counts the color of red - to ensure theres a lot of red on the heatmap
-        //max: settings.maxValue,  //this uses the max value set in the settings
-        data: allDataPoints
-    });
-
-    // Ensure overlay canvas exists and is properly sized
-    let overlayCanvas = document.getElementById('heatmap-overlay');
-    if (!overlayCanvas) {
-        overlayCanvas = document.createElement('canvas');
-        overlayCanvas.id = 'heatmap-overlay';
-        overlayCanvas.style.position = 'absolute';
-        overlayCanvas.style.top = '0';
-        overlayCanvas.style.left = '0';
-        overlayCanvas.style.pointerEvents = 'none';
-        overlayCanvas.style.zIndex = '1';
-        container.appendChild(overlayCanvas);
-    }
-    overlayCanvas.width = container.offsetWidth;
-    overlayCanvas.height = container.offsetHeight;
+  
+  
+  
     
-    // Draw grid and CoP on overlay canvas
-    const ctx = overlayCanvas.getContext('2d');
-    ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-
-    // Draw grid
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.lineWidth = 1;
-
-    // Draw vertical grid lines
-    const xStep = overlayCanvas.width / settings.sensorsX;
-    for (let i = 0; i <= settings.sensorsX; i++) {
-        ctx.beginPath();
-        ctx.moveTo(i * xStep, 0);
-        ctx.lineTo(i * xStep, overlayCanvas.height);
-        ctx.stroke();
+    initializeGraphs() {
+        // Initialize CoP Graph
+        const copLayout = {
+            title: 'Center of Pressure (CoP) Graph',
+            xaxis: {
+                title: 'X Position (coordinate)',
+                autorange: true,
+                tickformat: '0.2f',
+                nticks: 10,
+                exponentformat: 'none',
+                showexponent: 'none'
+            },
+            yaxis: {
+                title: 'Y Position (coordinate)',
+                autorange: true,
+                tickformat: '0.2f',
+                nticks: 10,
+                exponentformat: 'none',
+                showexponent: 'none'
+            },
+            showlegend: false
+        };
+        
+        Plotly.newPlot('cop-graph', [], copLayout);
+        
+        // Initialize Velocity Graph
+        const velocityLayout = {
+            title: 'CoP Velocity Components',
+            xaxis: {
+                title: 'Time (s)',
+                showgrid: true,
+                zeroline: true
+            },
+            yaxis: {
+                title: 'Velocity (in/s)',
+                showgrid: true,
+                zeroline: true
+            },
+            showlegend: true
+        };
+        
+        Plotly.newPlot('velocity-graph', [], velocityLayout);
+        
+        // Initialize Force Graph
+        const forceLayout = {
+            title: {
+                text: 'Vertical Ground Reaction Force',
+                font: { size: 16 }
+            },
+            xaxis: {
+                title: 'Time (s)',
+                showgrid: true,
+                zeroline: true
+            },
+            yaxis: {
+                title: 'Force (% of static weight)',
+                showgrid: true,
+                zeroline: true
+            },
+            showlegend: true
+        };
+        
+        Plotly.newPlot('force-graph', [], forceLayout);
+        
+        Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'All graphs initialized');
     }
-
-    // Draw horizontal grid lines
-    const yStep = overlayCanvas.height / settings.sensorsY;
-    for (let i = 0; i <= settings.sensorsY; i++) {
-        ctx.beginPath();
-        ctx.moveTo(0, i * yStep);
-        ctx.lineTo(overlayCanvas.width, i * yStep);
-        ctx.stroke();
+    
+    adjustContainerDimensions() {
+        const container = document.getElementById('heatmap-container');
+        const sensorCountX = this.state.settings.sensorsX;
+        const sensorCountY = this.state.settings.sensorsY;
+        
+        const currentWidth = container.offsetWidth;
+        const currentHeight = container.offsetHeight;
+        
+        const pixelsPerSensorX = Math.round(currentWidth / sensorCountX);
+        const pixelsPerSensorY = Math.round(currentHeight / sensorCountY);
+        
+        const adjustedWidth = pixelsPerSensorX * sensorCountX;
+        const adjustedHeight = pixelsPerSensorY * sensorCountY;
+        
+        container.style.width = `${adjustedWidth}px`;
+        container.style.height = `${adjustedHeight}px`;
+        
+        // Adjust overlay canvas
+        const overlayCanvas = document.getElementById('heatmap-overlay');
+        if (overlayCanvas) {
+            overlayCanvas.width = adjustedWidth;
+            overlayCanvas.height = adjustedHeight;
+        }
+        
+        // Force heatmap instance to update dimensions
+        if (this.state.visualization.heatmapInstance) {
+            this.state.visualization.heatmapInstance.setDataMax(this.state.settings.maxValue);
+        }
     }
+    
+    updateHeatmap(data) {
+      
+        //if (!this.state.visualization.heatmapInstance || !data.readings.length) return;
+        
+        if (!this.state.visualization.heatmapInstance || !data?.readings?.length) {
+            Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Skipping heatmap update - missing data or instance');
+            return;
+        }
 
-    // Draw CoP path
-    if (copHistory.length > 0) {
+        Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Updating heatmap with data:', data);
+
+        
+        const container = document.getElementById('heatmap-container');
+      
+        if (!container) {
+            Logger.log(CONFIG.DEBUG.ERROR, 'Visualizer', 'Heatmap container not found');
+            return;
+        }
+      
+        const scaleX = container.offsetWidth / this.state.settings.sensorsX;
+        const scaleY = container.offsetHeight / this.state.settings.sensorsY;
+        
+        const processedData = data.readings.map(reading => {
+            let x = reading.x;
+            let y = reading.y;
+            
+            if (this.state.settings.invertX) {
+                x = this.state.settings.sensorsX - x;
+            }
+            if (!this.state.settings.invertY) {
+                y = this.state.settings.sensorsY - y;
+            }
+            
+            return {
+                x: x * scaleX,
+                y: y * scaleY,
+                value: reading.value
+            };
+        });
+      
+        Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Processed heatmap data:', processedData);
+        
+        const dataMaxValue = Math.max(...processedData.map(d => d.value));
+        
+        this.state.visualization.heatmapInstance.setData({
+            min: this.state.settings.minValue,
+            max: dataMaxValue - 300,
+            data: processedData
+        });
+        
+        this.updateHeatmapOverlay(data.cop, processedData);
+    }
+    
+    updateHeatmapOverlay(cop, pressureData) {
+        const overlayCanvas = document.getElementById('heatmap-overlay');
+        const ctx = overlayCanvas.getContext('2d');
+        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        
+        // Draw grid
+        this.drawGrid(ctx, overlayCanvas);
+        
+        // Draw CoP path and current position
+        if (cop) {
+            this.drawCoPPath(ctx, overlayCanvas);
+            this.drawCurrentCoP(ctx, overlayCanvas, cop);
+        }
+    }
+    
+    drawGrid(ctx, canvas) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 1;
+        
+        const xStep = canvas.width / this.state.settings.sensorsX;
+        const yStep = canvas.height / this.state.settings.sensorsY;
+        
+        // Vertical lines
+        for (let i = 0; i <= this.state.settings.sensorsX; i++) {
+            ctx.beginPath();
+            ctx.moveTo(i * xStep, 0);
+            ctx.lineTo(i * xStep, canvas.height);
+            ctx.stroke();
+        }
+        
+        // Horizontal lines
+        for (let i = 0; i <= this.state.settings.sensorsY; i++) {
+            ctx.beginPath();
+            ctx.moveTo(0, i * yStep);
+            ctx.lineTo(canvas.width, i * yStep);
+            ctx.stroke();
+        }
+    }
+    
+    drawCoPPath(ctx, canvas) {
+        const copHistory = this.state.visualization.copHistory;
+        if (!copHistory.length) return;
+        
         ctx.strokeStyle = 'yellow';
         ctx.lineWidth = 2;
         ctx.beginPath();
-
+        
         copHistory.forEach((point, index) => {
             let x = point.x;
             let y = point.y;
             
-            // Apply inversion if enabled
-            if (settings.invertX) {
-                x = settings.sensorsX - x;
+            if (this.state.settings.invertX) {
+                x = this.state.settings.sensorsX - x;
             }
-            if (!settings.invertY) {
-                y = settings.sensorsY - y;
+            if (!this.state.settings.invertY) {
+                y = this.state.settings.sensorsY - y;
             }
             
-            // Scale coordinates to canvas size
-            x = x * scaleX;
-            y = y * scaleY;
-
+            const xScaled = (x * canvas.width) / this.state.settings.sensorsX;
+            const yScaled = (y * canvas.height) / this.state.settings.sensorsY;
+            
             if (index === 0) {
-                ctx.moveTo(x, y);
+                ctx.moveTo(xScaled, yScaled);
             } else {
-                ctx.lineTo(x, y);
+                ctx.lineTo(xScaled, yScaled);
             }
         });
-
+        
         ctx.stroke();
-
-        // Draw current CoP point
-        const lastPoint = copHistory[copHistory.length - 1];
-        let x = lastPoint.x;
-        let y = lastPoint.y;
+    }
+    
+    drawCurrentCoP(ctx, canvas, cop) {
+        let x = cop.x;
+        let y = cop.y;
         
-        if (settings.invertX) {
-            x = settings.sensorsX - x;
+        if (this.state.settings.invertX) {
+            x = this.state.settings.sensorsX - x;
         }
-        if (!settings.invertY) {
-            y = settings.sensorsY - y;
+        if (!this.state.settings.invertY) {
+            y = this.state.settings.sensorsY - y;
         }
         
-        x = x * scaleX;
-        y = y * scaleY;
-
+        const xScaled = (x * canvas.width) / this.state.settings.sensorsX;
+        const yScaled = (y * canvas.height) / this.state.settings.sensorsY;
+        
         ctx.beginPath();
         ctx.fillStyle = 'yellow';
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.arc(xScaled, yScaled, 4, 0, Math.PI * 2);
         ctx.fill();
     }
-//}
-  
-}, 16 );  //50 ms (approx 20 fps) // 16ms debounce time (approximately 60fps)  
-          //16 works with fixed heatmap container dimension checking
-
-// Replace your existing updateHeatmapWithHistory function with this wrapper
-function updateHeatmapWithHistory() {
-    debouncedUpdateHeatmap(dataHistory, copHistory, settings);
-}
-
-
-//Ensures container and canvas both width and height are exact multiples of sensor count
-//this was the big thing to fix the heatmap not always showing up 
-function adjustContainerDimensions() {
-    const container = document.getElementById('heatmap-container');
-    const sensorCountX = settings.sensorsX;
-    const sensorCountY = settings.sensorsY;
     
-    // Get current dimensions
-    const currentWidth = container.offsetWidth;
-    const currentHeight = container.offsetHeight;
-    
-    // Calculate pixels per sensor
-    const pixelsPerSensorX = Math.round(currentWidth / sensorCountX);
-    const pixelsPerSensorY = Math.round(currentHeight / sensorCountY);
-    
-    // Calculate adjusted dimensions
-    const adjustedWidth = pixelsPerSensorX * sensorCountX;
-    const adjustedHeight = pixelsPerSensorY * sensorCountY;
-    
-    // Apply adjusted dimensions
-    container.style.width = `${adjustedWidth}px`;
-    container.style.height = `${adjustedHeight}px`;
-
-    // Also adjust the overlay canvas
-    const overlayCanvas = document.getElementById('heatmap-overlay');
-    if (overlayCanvas) {
-        overlayCanvas.width = adjustedWidth;
-        overlayCanvas.height = adjustedHeight;
-    }
-
-    // Force heatmap instance to update its dimensions
-    if (heatmapInstance) {
-        heatmapInstance.setDataMax(settings.maxValue);
-    }
-}
-
-
-// function to handle stance calibration
-function startStanceCalibration() {
-    const button = document.getElementById('calibrateStanceButton');
-    const countdownDisplay = document.getElementById('calibrationCountdown');
-    button.disabled = true;
-    
-    let timeLeft = CALIBRATION_DURATION / 1000;
-    stanceCalibrationData = [];
-    isCalibrating = true;
-    calibrationStartTime = Date.now();
-  
-  
-    const countInterval = setInterval(() => {
-        timeLeft = Math.max(0, Math.round((CALIBRATION_DURATION - (Date.now() - calibrationStartTime)) / 1000));
-        //countdownDisplay.textContent = `${timeLeft}s remaining`;
-        countdownDisplay.textContent = `${timeLeft}s remain - Rock left to right, heel to toe`;        
+    updateCoPGraph() {
+        const copHistory = this.state.visualization.copHistory;
+        if (!copHistory.length) return;
         
-        if (timeLeft <= 0) {
-            clearInterval(countInterval);
-            finishCalibration();
-            countdownDisplay.textContent = '';
-            button.disabled = false;
+        const inchesPerSensorX = this.state.settings.matWidth / this.state.settings.sensorsX;
+        const inchesPerSensorY = this.state.settings.matHeight / this.state.settings.sensorsY;
+        
+        let xValues, yValues, title, xAxisTitle, yAxisTitle;
+        const copMode = document.querySelector('input[name="copMode"]:checked').value;
+        
+        // Adjust coordinates based on mode
+        if (copMode === 'normal') {
+            xValues = copHistory.map(point => point.x);
+            yValues = copHistory.map(point => point.y);
+            title = 'Center of Pressure (CoP) Graph';
+            xAxisTitle = 'X Position (coordinate)';
+            yAxisTitle = 'Y Position (coordinate)';
+        } else {
+            const basePoint = copHistory[0];
+            xValues = copHistory.map(point => 
+                (point.x - basePoint.x) * inchesPerSensorX
+            );
+            yValues = copHistory.map(point => 
+                (point.y - basePoint.y) * inchesPerSensorY
+            );
+            title = 'Center of Pressure (CoP) Delta';
+            xAxisTitle = 'X Delta (inches)';
+            yAxisTitle = 'Y Delta (inches)';
         }
-    }, 100);
-}
-
-
-function finishCalibration() {
-    isCalibrating = false;
-    if (stanceCalibrationData.length === 0) {
-        console.error('No calibration data collected');
-        return;
-    }
-  
-    // Process each calibration frame with inversions
-    const adjustedCalibrationData = stanceCalibrationData.map(frame => 
-        frame.map(reading => ({
-            ...reading,
-            x: settings.invertX ? (settings.sensorsX - reading.x) : reading.x,
-            y: settings.invertY ? (settings.sensorsY - reading.y) : reading.y
-        }))
-    );
-
-    // Calculate boundaries from adjusted data
-    const boundaries = calculateCalibrationBoundaries(adjustedCalibrationData);
-    stanceCalibrationData = boundaries; // Store only the boundaries
-
-    
-    if (debug == 7) {
-        console.log('Calibration boundaries:', boundaries);
-    }
-      //boundaries stucture:
-        //xRange: { min: overallMinX, max: overallMaxX, mid: xMidpoint },
-        //frontFoot: { minY: frontFootMinY, maxY: frontFootMaxY },
-        //backFoot: { minY: backFootMinY, maxY: backFootMaxY }
-  //so boundaries.frontFoot.minY, or boundaries.backFoot.maxY, or boundaries.xRange.max, or boundaries.xRange.mid
-  
-}
-
-
-function calculateCalibrationBoundaries(calibrationFrames) {
-    let overallMinX = Infinity;
-    let overallMaxX = -Infinity;
-    let frontFootMinY = Infinity;
-    let frontFootMaxY = -Infinity;
-    let backFootMinY = Infinity;
-    let backFootMaxY = -Infinity;
-
-    // First pass: find overall X boundaries
-    calibrationFrames.forEach(frame => {
-        frame.forEach(point => {
-            overallMinX = Math.min(overallMinX, point.x);
-            overallMaxX = Math.max(overallMaxX, point.x);
-        });
-    });
-
-    const xMidpoint = overallMinX + ((overallMaxX - overallMinX) / 2);
-
-    // Second pass: find Y boundaries for each foot  
-    
-    calibrationFrames.forEach(frame => {
-        frame.forEach(point => {
-            if (point.x <= xMidpoint) { // Front foot
-                frontFootMinY = Math.min(frontFootMinY, point.y);
-                frontFootMaxY = Math.max(frontFootMaxY, point.y);
-            } else { // Back foot
-                backFootMinY = Math.min(backFootMinY, point.y);
-                backFootMaxY = Math.max(backFootMaxY, point.y);
+        
+        const trace = {
+            x: xValues,
+            y: yValues,
+            mode: 'lines+markers',
+            type: 'scatter',
+            marker: { color: 'blue', size: 6 }
+        };
+        
+        const layout = {
+            title: title,
+            xaxis: {
+                title: xAxisTitle,
+                autorange: true,
+                tickformat: '0.2f',
+                nticks: 10,
+                exponentformat: 'none',
+                showexponent: 'none'
+            },
+            yaxis: {
+                title: yAxisTitle,
+                autorange: true,
+                tickformat: '0.2f',
+                nticks: 10,
+                exponentformat: 'none',
+                showexponent: 'none'
             }
-        });
-    });
-
-    return {
-        xRange: { min: overallMinX, max: overallMaxX, mid: xMidpoint },
-        frontFoot: { minY: frontFootMinY, maxY: frontFootMaxY },
-        backFoot: { minY: backFootMinY, maxY: backFootMaxY }
-    };
-}
-
-// Add this helper function to convert z-value to weight
-function zValueToWeight(zValue) {
-    // Using the given equation: z = 1390.2 * x^0.1549  //this was taken from using water bucket to calibrate x12y6 of Golf-T-2000
-    // We need to solve for x (weight): x = (z/1390.2)^(1/0.1549)
-    return Math.pow((zValue / 1390.2), (1 / 0.1549));
-}
-
-// Modify the calculatePressureDistribution function
-function calculatePressureDistribution(readings) {
-    if (!readings || readings.length === 0) return;
-
-    const method = document.querySelector('input[name="weightDistMethod"]:checked').value;
+        };
+        
+        Plotly.newPlot('cop-graph', [trace], layout);
+    }
     
-    if (method === 'calibrated' && !stanceCalibrationData) {
-        // If calibrated method is selected but no calibration data exists,
-        // fall back to per-frame method
-        calculatePressureDistributionPerFrame(readings);
-        return;
-    }
-
-    if (method === 'calibrated') {
-        calculatePressureDistributionCalibrated(readings);
-    } else {
-        calculatePressureDistributionPerFrame(readings);
-    }
-}
-
-
-//for using power fit relationship:
-function calculatePressureDistributionPerFrame(readings) {
-    // Adjust X and Y coordinates based on inversion setting
-    const adjustedReadings = readings.map(reading => ({
-        ...reading,
-        adjustedX: settings.invertX ? (settings.sensorsX - reading.x) : reading.x,
-        adjustedY: settings.invertY ? (settings.sensorsY - reading.y) : reading.y      
-    }));
-
-    // Find min and max X values to determine front/back split
-    const xValues = adjustedReadings.map(r => r.adjustedX);
-    const minX = Math.min(...xValues);
-    const maxX = Math.max(...xValues);
-    const xMidpoint = minX + (maxX - minX) / 2;
-
-    if (debug == 4) console.log("xMidpoint= " + xMidpoint + "   minX= " + minX + "   maxX= " + maxX);  
-    
-    // Separate front and back foot readings
-    const frontFootReadings = adjustedReadings.filter(r => r.adjustedX <= xMidpoint);
-    const backFootReadings = adjustedReadings.filter(r => r.adjustedX > xMidpoint);
-  
-    if (linearFit) {
-        //for linear fit
-        // Calculate total pressure (sum of all activated points Z value)
-        const totalPressure = adjustedReadings.reduce((sum, r) => sum + r.value, 0);
-        const frontFootData = processFootData(frontFootReadings, totalPressure);
-        const backFootData = processFootData(backFootReadings, totalPressure);    
-        if (debug == 4) console.log("totalPressure (sum of all Z values) = " + totalPressure);
-        // Update display
-        updatePressureDisplay('front', frontFootData);    
-        updatePressureDisplay('back', backFootData);      
-    }
-    else {
-        //for power fit:
-        // Calculate total weight instead of total pressure
-        const totalWeight = readings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);  
-        const frontFootData = processFootData(frontFootReadings, totalWeight);
-        const backFootData = processFootData(backFootReadings, totalWeight);    
-        if (debug == 4) console.log("totalWeight (sum of all Z values (converted to weight)) = " + totalWeight);
-        // Update display
-        updatePressureDisplay('front', frontFootData);    
-        updatePressureDisplay('back', backFootData);
-    }
-  
-}
-
-
-function processFootData(footReadings, totalPressure) {
-    if (footReadings.length === 0) return { total: 0, toe: 0, heel: 0 };
-  
-    // Find toe/heel split based on this foot's data
-    const yValues = footReadings.map(r => r.adjustedY);
-    //const yMidpoint = (Math.min(...yValues) + Math.max(...yValues)) / 2;  //(min + max)/2 gives same as ((max-min)/2)+min
-    const minY = Math.min(...yValues);
-    const maxY = Math.max(...yValues);
-    const yMidpoint = minY + ((maxY - minY) / 2);
-  
-    //if (debug == 4) console.log("yMidpoint= " + yMidpoint + "   minY= " + minY + "   maxY= " + maxY);
-  
-    let footPercentage = 0;
-    let toePercentage = 0;
-    let heelPercentage = 0;
-    
-    if (linearFit) {
-        //for linear relationship:  
-        const footTotal = footReadings.reduce((sum, r) => sum + r.value, 0);
-        footPercentage = Math.round((footTotal / totalPressure) * 100);
-      
-        const toeReadings = footReadings.filter(r => r.adjustedY >= yMidpoint);  // <= xMidpoint
-        const heelReadings = footReadings.filter(r => r.adjustedY < yMidpoint);  //  > xMidpoint
-      
-        const toeTotal = toeReadings.reduce((sum, r) => sum + r.value, 0);
-        const heelTotal = heelReadings.reduce((sum, r) => sum + r.value, 0);
-      
-        toePercentage = Math.round((toeTotal / footTotal) * 100);
-        heelPercentage = Math.round((heelTotal / footTotal) * 100);
-    }  
-    else { //for power relationship:  
-      
-        // Convert z-values to weights
-        const footWeights = footReadings.map(r => ({
-            ...r,
-            weight: zValueToWeight(r.value)
-        }));
-      
-        // Calculate total weight instead of pressure  ...  //for power relationship:  
-        const totalWeight = footWeights.reduce((sum, r) => sum + r.weight, 0);
-        //updated the calc pressure dist functions to send total weight which is already converted from raw z values to weight with the power fit eqn.
-        //const allTotalWeight = zValueToWeight(totalPressure); // Convert total pressure to weight
-        const allTotalWeight = totalPressure; //already converted from raw z values to weight in the calling function
-        footPercentage = Math.round((totalWeight / allTotalWeight) * 100);
+    updateVelocityGraph() {
+        const velocityHistory = this.state.visualization.velocityHistory;
+        if (velocityHistory.length < 2) return;
         
-        const toeReadings = footWeights.filter(r => r.adjustedY >= yMidpoint);
-        const heelReadings = footWeights.filter(r => r.adjustedY < yMidpoint);
-
-        const toeWeight = toeReadings.reduce((sum, r) => sum + r.weight, 0);
-        const heelWeight = heelReadings.reduce((sum, r) => sum + r.weight, 0);
-
-        toePercentage = Math.round((toeWeight / totalWeight) * 100);
-        heelPercentage = Math.round((heelWeight / totalWeight) * 100);
-    }
-  
-    return {
-        total: footPercentage,
-        toe: toePercentage,
-        heel: heelPercentage
-    };
-}
-
-
-//for power fit relation between wegith and Z value
-function calculatePressureDistributionCalibrated(readings) {
-    if (!stanceCalibrationData) return;    
-
-    // Apply inversion settings to readings
-    const adjustedReadings = readings.map(reading => ({
-        ...reading,
-        x: settings.invertX ? (settings.sensorsX - reading.x) : reading.x,
-        y: settings.invertY ? (settings.sensorsY - reading.y) : reading.y
-    }));  
-  
-    // The calibration boundaries were captured with inversion settings applied,
-      // so we can use them directly
-    const boundaries = stanceCalibrationData;  
-    const xMidpoint = boundaries.xRange.mid;
-
-    if (debug == 7) console.log('xMidpoint:', xMidpoint);
-
-    // Separate front and back foot readings using calibrated xMidpoint
-    const frontFootReadings = adjustedReadings.filter(r => r.x <= xMidpoint);    
-    const backFootReadings = adjustedReadings.filter(r => r.x > xMidpoint);
-  
-    if (debug == 7) console.log('frontFootReadings:', frontFootReadings);
-    if (debug == 7) console.log('backFootReadings:', backFootReadings);
-  
-  
-    if (linearFit) {
-        //for linear fit:
-        // Calculate total pressure    
-        const totalPressure = adjustedReadings.reduce((sum, r) => sum + r.value, 0);
-
-        if (debug == 7) console.log('totalPressure:', totalPressure);  
-
-        // Process front foot using calibrated boundaries
-        const frontFootData = processFootDataWithBoundaries(
-            frontFootReadings,
-            totalPressure,
-            boundaries.frontFoot
+        const mostRecentTime = velocityHistory[velocityHistory.length - 1].timestamp;
+        const times = velocityHistory.map(point => 
+            (point.timestamp - mostRecentTime) / 1000
         );
-
-        // Process back foot using calibrated boundaries
-        const backFootData = processFootDataWithBoundaries(
-            backFootReadings,
-            totalPressure,
-            boundaries.backFoot
-        );
-
-        // Update display
-        updatePressureDisplay('front', frontFootData);
-        updatePressureDisplay('back', backFootData);
-    }
-    else {
-        //for power fit:
-        // Calculate total weight instead of total pressure
-        const totalWeight = readings.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
-
-        if (debug == 7) console.log('totalWeight:', totalWeight);
-
-        // Process front foot using calibrated boundaries
-        const frontFootData = processFootDataWithBoundaries(
-            frontFootReadings,
-            totalWeight,
-            boundaries.frontFoot
-        );
-
-        // Process back foot using calibrated boundaries
-        const backFootData = processFootDataWithBoundaries(
-            backFootReadings,
-            totalWeight,
-            boundaries.backFoot
-        );
-
-        // Update display
-        updatePressureDisplay('front', frontFootData);
-        updatePressureDisplay('back', backFootData);
-    }
-  
-}
-
-
-function processFootDataWithBoundaries(footReadings, totalPressure, boundaries) {
-    if (footReadings.length === 0) return { total: 0, toe: 0, heel: 0 };
-  
-    const yMidpoint = boundaries.minY + ((boundaries.maxY - boundaries.minY) / 2);
-  
-    let footPercentage = 0;
-    let toePercentage = 0;
-    let heelPercentage = 0;
-  
-    if (linearFit) {
-        //for linear relationship:
-        const footTotal = footReadings.reduce((sum, r) => sum + r.value, 0);
-        footPercentage = Math.round((footTotal / totalPressure) * 100);
         
-        // Separate toe and heel readings using calibrated yMidpoint
-        const toeReadings = footReadings.filter(r => r.y >= yMidpoint);
-        const heelReadings = footReadings.filter(r => r.y < yMidpoint);
-        
-        const toeTotal = toeReadings.reduce((sum, r) => sum + r.value, 0);
-        const heelTotal = heelReadings.reduce((sum, r) => sum + r.value, 0);
-        
-        toePercentage = Math.round((toeTotal / footTotal) * 100) || 0;
-        heelPercentage = Math.round((heelTotal / footTotal) * 100) || 0;
-    }
-    else {
-        //for power relationship: 
-
-        // Convert z-values to weights
-        const footWeights = footReadings.map(r => ({
-            ...r,
-            weight: zValueToWeight(r.value)
-        }));  
-
-        const totalWeight = footWeights.reduce((sum, r) => sum + r.weight, 0);
-        //updated the calc pressure dist functions to send total weight which is already converted from raw z values to weight with the power fit eqn.  
-        //const allTotalWeight = zValueToWeight(totalPressure); // Convert total pressure to weight
-        const allTotalWeight = totalPressure; //already converted from raw z values to weight in the calling function
-        footPercentage = Math.round((totalWeight / allTotalWeight) * 100);  
-        
-        const toeReadings = footWeights.filter(r => r.y >= yMidpoint);
-        const heelReadings = footWeights.filter(r => r.y < yMidpoint);
-        
-        const toeWeight = toeReadings.reduce((sum, r) => sum + r.weight, 0);
-        const heelWeight = heelReadings.reduce((sum, r) => sum + r.weight, 0);
-        
-        toePercentage = Math.round((toeWeight / totalWeight) * 100) || 0;
-        heelPercentage = Math.round((heelWeight / totalWeight) * 100) || 0;
-    }
-  
-    return {
-        total: footPercentage,
-        toe: toePercentage,
-        heel: heelPercentage
-    };
-  
-}
-
-
-function updatePressureDisplay(foot, data) {
-    document.getElementById(`${foot}-percentage`).textContent = data.total;
-    document.getElementById(`${foot}-toe-percentage`).textContent = `Toe: ${data.toe}%`;
-    document.getElementById(`${foot}-heel-percentage`).textContent = `Heel: ${data.heel}%`;
-}
-
-
-
-function initializeCoPStats() {
-    const readyButton = document.getElementById('readyButton');
-    readyButton.addEventListener('click', startCountdown);
-}
-
-
-function startCountdown() {
-    const readyButton = document.getElementById('readyButton');
-    const countdownDisplay = document.getElementById('countdown');
-    readyButton.disabled = true;
-    let count = 5;
-
-    const countInterval = setInterval(() => {
-        countdownDisplay.textContent = count;
-        count--;
-        
-        if (count < 0) {
-            clearInterval(countInterval);
-            countdownDisplay.textContent = 'START!';
-            setTimeout(() => {
-                countdownDisplay.textContent = '';
-                startRecording();
-            }, 1000);
-        }
-    }, 1000);
-}
-
-function startRecording() {
-    isRecording = true;
-    recordingStarted = false;
-    copPathData = [];
-    recordedReadings = [];
-    lastCopPosition = null;
-    startTime = null;
-    maxSpeedRecorded = 0;
-}
-
-function processCoPData(readings, cop) {
-    if (!isRecording) return;
-  
-    // Adjust CoP coordinates based on inversion settings
-    let copX = settings.invertX ? (settings.sensorsX - cop.x) : cop.x;
-    let copY = settings.invertY ? (settings.sensorsY - cop.y) : cop.y;
-  
-    let inchesPerSensorX = settings.matWidth / settings.sensorsX;
-    let inchesPerSensorY = settings.matHeight / settings.sensorsY;
-    const xInches = copX * inchesPerSensorX;
-    const yInches = copY * inchesPerSensorY;
-
-    if (!lastCopPosition) {
-        lastCopPosition = { x: xInches, y: yInches };
-        return;
-    }
-
-    // Calculate movement distance
-    const distance = Math.sqrt(
-        Math.pow(xInches - lastCopPosition.x, 2) + 
-        Math.pow(yInches - lastCopPosition.y, 2)
-    );
-
-    // Check if movement exceeds threshold to start recording
-    if (!recordingStarted && distance >= settings.copTriggerThreshold) {
-        recordingStarted = true;
-        startTime = Date.now();  //ms since the epoch
-    }
-
-    if (recordingStarted) {
-        const timestamp = Date.now();  //ms since the epoch
-      
-        const timeElapsed = (timestamp - startTime) / 1000; // in seconds
-        const currentTime = (Date.now() - startTime) / 1000; //in seconds
-        
-        //keep copPathData structure for now so it works in the updateCoPStats function just below this
-        //also, copPathData has x and y units of inches, not coordinates, so for the path data, copPathData is best
-        copPathData.push({
-            x: xInches,
-            y: yInches,
-            timestamp: timestamp
-        });
-
-        //here is an example of playbackData structure:
-        /*
-        playbackData = [
+        const traces = [
             {
-                timestamp: 1630000000000,
-                pressure: [{ x: 12, y: 8, value: 450 }, { x: 10, y: 6, value: 300 }],
-                cop: { x: 15, y: 10 }
+                x: times,
+                y: velocityHistory.map(point => point.vx),
+                mode: 'lines+markers',
+                name: 'Lateral Velocity',
+                line: { color: 'blue' },
+                marker: { size: 6, color: 'blue' }
             },
             {
-                timestamp: 1630000000500,
-                pressure: [{ x: 14, y: 7, value: 400 }, { x: 9, y: 5, value: 280 }],
-                cop: { x: 16, y: 11 }
+                x: times,
+                y: velocityHistory.map(point => point.vy),
+                mode: 'lines+markers',
+                name: 'Heel-Toe Velocity',
+                line: { color: 'red' },
+                marker: { size: 6, color: 'red' }
             }
         ];
-        */
-         
-      
-        //this is taken from updateRawData that also has readings passed in
-        const frame = {
-            timestamp: timestamp,              
-            pressure: readings.map(reading => ({
-              ...reading,
-              x: settings.invertX ? (settings.sensorsX - reading.x) : reading.x,
-              y: settings.invertY ? (settings.sensorsY - reading.y) : reading.y,
-              value: reading.value
-            })),
-            //cop: { x: xInches, y: yInches }
-            cop: { x: copX, y: copY }
-        };
-
-        // Append frame to playbackData
-        playbackData.push(frame);
-      
-      
-        // Check stop conditions
-        if (checkSwingStop(currentTime, distance)) {
-            stopSwing();
-            return;
-        }
-
-        updateCoPStats();
-        //updateCoPStats(frame.cop);
-    }
-
-    lastCopPosition = { x: xInches, y: yInches };  // Update last CoP position
-}
-
-function updateCoPStats() {
-    if (copPathData.length < 2) return;
-    //if (playbackData.length < 2) return;  //do this and the other commented outs if get rid of copPathData structure...
-
-    // Calculate path distance
-    let totalDistance = 0;
-    let xMin = Infinity, xMax = -Infinity;
-    let yMin = Infinity, yMax = -Infinity;
-
-    //for (let i = 1; i < playbackData.length; i++) {
-    for (let i = 1; i < copPathData.length; i++) {
-        const dist = Math.sqrt(
-            //Math.pow(playbackData[i].cop.x - playbackData[i-1].cop.x, 2) + 
-            //Math.pow(playbackData[i].cop.y - playbackData[i-1].cop.y, 2)
-            Math.pow(copPathData[i].x - copPathData[i-1].x, 2) + 
-            Math.pow(copPathData[i].y - copPathData[i-1].y, 2)
-        );
-        totalDistance += dist;
-
-        // Calculate instantaneous speed
-        const timeDiff = (copPathData[i].timestamp - copPathData[i-1].timestamp) / 1000;
-        const speed = dist / timeDiff;
-        maxSpeedRecorded = Math.max(maxSpeedRecorded, speed);
-
-        // Track min/max coordinates
-        xMin = Math.min(xMin, copPathData[i].x);
-        xMax = Math.max(xMax, copPathData[i].x);
-        yMin = Math.min(yMin, copPathData[i].y);
-        yMax = Math.max(yMax, copPathData[i].y);
-    }
-
-    const totalTime = (copPathData[copPathData.length-1].timestamp - startTime) / 1000;
-    const avgSpeed = totalDistance / totalTime;
-
-    // Update display
-    document.getElementById('pathDistance').textContent = totalDistance.toFixed(2);    
-    document.getElementById('avgSpeed').textContent = avgSpeed.toFixed(2);
-    document.getElementById('maxSpeed').textContent = maxSpeedRecorded.toFixed(2);
-    document.getElementById('totalTime').textContent = totalTime.toFixed(2);
-    document.getElementById('xDistance').textContent = (xMax - xMin).toFixed(2);
-    document.getElementById('yDistance').textContent = (yMax - yMin).toFixed(2);
-}
-
-
-
-function initializeSwingControls() {
-    // Only need to set up event listeners since controls are now in HTML
-    setupSettingControl('swingDuration');
-    setupSettingControl('stopTriggerThreshold');
-    setupSettingControl('copTriggerThreshold');
-    
-    // Add checkbox event listeners
-    document.getElementById('useFixedDurationStop').addEventListener('change', (e) => {
-        settings.useFixedDurationStop = e.target.checked;
-    });
-    
-    document.getElementById('useMovementThresholdStop').addEventListener('change', (e) => {
-        settings.useMovementThresholdStop = e.target.checked;
-    });
-    
-    // Initialize playback controls
-    initializePlaybackControls();
-}
-
-
-function setupSettingControl(settingName) {
-    const input = document.getElementById(settingName);
-    const slider = document.getElementById(`${settingName}Slider`);
-    
-    input.addEventListener('input', (e) => {
-        slider.value = e.target.value;
-        settings[settingName] = parseFloat(e.target.value);
-    });
-    
-    slider.addEventListener('input', (e) => {
-        input.value = e.target.value;
-        settings[settingName] = parseFloat(e.target.value);
-    });
-}
-
-function checkSwingStop(currentTime, distance) {
-    if (!recordingStarted) return false;
-  
-    // Check fixed duration stop condition
-    if (settings.useFixedDurationStop && currentTime >= settings.swingDuration) {
-        return true;
-    }
-    
-    // Check movement threshold stop condition
-    if (settings.useMovementThresholdStop && distance <= settings.stopTriggerThreshold) {
-        return true;
-    }
-    
-    return false;
-}
-
-function stopSwing() {
-    isRecording = false;
-    recordingStarted = false;    
-    
-    // Show playback controls
-    document.querySelector('.playback-controls').style.display = 'block';
-  
-    initializePlayback();
-}
-
-function initializePlaybackControls() {
-    document.getElementById('skipStart').addEventListener('click', () => skipToFrame(0));
-    document.getElementById('reversePlay').addEventListener('click', () => playReverse());
-    document.getElementById('prevFrame').addEventListener('click', () => showPrevFrame());
-    document.getElementById('playPause').addEventListener('click', () => togglePlay());
-    document.getElementById('nextFrame').addEventListener('click', () => showNextFrame());
-    document.getElementById('forwardPlay').addEventListener('click', () => playForward());
-    document.getElementById('skipEnd').addEventListener('click', () => skipToFrame(-1));
-    
-    document.getElementById('frameSlider').addEventListener('input', (e) => {
-        skipToFrame(parseInt(e.target.value));
-    });
-    
-    document.getElementById('playbackSpeed').addEventListener('change', (e) => {
-        settings.playbackSpeed = parseFloat(e.target.value);
-        if (isPlaying) {
-            stopPlayback();
-            startPlayback();
-        }
-    });
-}
-
-function initializePlayback() {
-  
-    if (!playbackData || playbackData.length === 0) {
-        updateConnectionInfo("No recorded data to playback.", true);
-        return;
-    }
-  
-    //if (debug == 6) console.log("plabackData.length= " + playbackData.length);  
-    //if (debug == 6) console.log("plabackData= " + playbackData);
-    if (debug == 6) console.log("plabackData.length= ", playbackData.length);  
-    if (debug == 6) console.log("plabackData= ", playbackData);
-  
-    const slider = document.getElementById('frameSlider');
-    slider.max = playbackData.length - 1;
-    slider.value = 0;
-    currentFrameIndex = 0;
-    showFrame(0);    
-  
-}
-
-
-function showFrame(frameIndex) {  
-    if (!playbackData || frameIndex < 0 || frameIndex >= playbackData.length) return;
-  
-    if (debug == 6) console.log("playbackData = (below): ");
-    if (debug == 6) console.log(playbackData);
-    
-    const frame = playbackData[frameIndex];
-    const startTime = playbackData[0].timestamp;
-    const frameTime = (frame.timestamp - startTime) / 1000;  //timestamps in ms / 1000 => seconds
-    
-    if (debug == 5) console.log("startTime: " + startTime + "   frameTime: " + frameTime);
-    if (debug == 5) console.log("frame[" + frameIndex + "] (below): ");
-    if (debug == 5) console.log(frame);
-  
-  
-    // Update time display
-    document.getElementById('timeDisplay').textContent = frameTime.toFixed(3) + 's';
-    
-    // Update slider
-    document.getElementById('frameSlider').value = frameIndex;
-    
-    // Update visualizations with frame data
-    updateVisualizationsForFrame(frame, frameIndex);  //frame=playbackData[frameIndex];
-  
-}
-
-function updateVisualizationsForFrame(frame, frameIndex) {
-  
-    //the input frame is playbackData[frameIndex]
-  
-    if (!frame) {
-        console.error("No frame data provided.");
-        return;
-    }
-  
-    // Apply frame data to visualizations
-     
-    //updateHeatmapWithRecordedSwing(frame.pressure);
-    //updateHeatmapWithRecordedSwing(frame);  //sending whole frame so it gets pressure data and cop
-    updateHeatmapWithRecordedSwing(frame, frameIndex);  //sending whole frame so it gets pressure data and cop
-  
-    //drawing the recorded swing CoP on the heatmap in the update heatmap function now instead
-    //drawRecordedSwingCoPOnHeatmap(frame.cop);  //draw the CoP overlay over the heatmap
-  
-    updateCoPGraphWithRecordedSwing(frame.cop, frameIndex);
-    
-    //calculatePressureDistributionFromRecordedSwing(frame.pressure);  // Update weight distribution
-    calculatePressureDistributionFromRecordedSwing(frame);  // Update weight distribution
-    
-    updateVelocityGraphWithRecordedSwing(frame, frameIndex);  // Add this line
-  
-    updateForceGraphWithRecordedSwing(frame, frameIndex);
-    
-    //prob don't want them to re-update, since they're calculated based on the full swing
-    //updateCoPStatsForFrame(frame.cop);  // Update CoP stats //prob don't want them to re-update, since they're calculated based on the full swing    
-  
-    updateRawDataWithRecordedSwing(frame);
-  
-}
-
-
-//function updateHeatmapWithRecordedSwing(pressureData) {
-//function updateHeatmapWithRecordedSwing(frame) {
-function updateHeatmapWithRecordedSwing(frame, frameIndex) {
-    //if (!heatmapInstance || pressureData.length === 0) return;
-    if (!heatmapInstance || frame.pressure.length === 0) return;    
-    
-    const pressureData = frame.pressure;  
-    
-    let dataMinValue = Infinity;   // Start with the largest possible value
-    let dataMaxValue = -Infinity;  // Start with the smallest possible value
-  
-    var adjustedPressureData = [];
-
-    // Get canvas dimensions and scaling factors
-    const canvas = document.getElementById('heatmap');
-    
-    const scaleX = canvas.offsetWidth / settings.sensorsX;    
-    const scaleY = canvas.offsetHeight / settings.sensorsY;    
-  
-    if (debug == 5) console.log("scaleX= " + scaleX + "   scaleY= " + scaleY);  
-    
-     // Process pressure data  //the inversion checking has already been done...
-    pressureData.forEach((reading) => {
-        // Scale coordinates to canvas size
-        const xScaled = reading.x * scaleX;
         
-          //pressure data has already been properly inverted... but that's for cartesian
-          //so for heatmap display, need to convert to screen coordinates (i.e. invert y again)          
-        const yScaled = (settings.sensorsY - reading.y) * scaleY;
-        
-        // Scale the value to create more variation in colors
-        const scaledValue = Math.min(settings.maxValue, reading.value);
-        const normalizedValue = (scaledValue / settings.maxValue) * reading.value;
-
-        if (dataMaxValue < reading.value) dataMaxValue = reading.value;  
-        if (dataMinValue > reading.value) dataMinValue = reading.value;
-
-        const element = {
-            x: xScaled,
-            y: yScaled,
-            value: reading.value // You may decide to use normalizedValue instead
-        };
-        
-        adjustedPressureData.push(element);
-    });
-  
-    //if (debug == 5) console.log("maxValue= " + maxValue + "  minValue= " + minValue);
-    //if (debug == 5) console.log("heatmap pressureData: (below) ");
-    //if (debug == 5) console.log(pressureData);
-    if (debug == 5) {        
-        console.log("dataMaxValue= " + dataMaxValue + "  dataMinValue= " + dataMinValue);
-        console.log("heatmap adjustedPressureData: ", adjustedPressureData);
-    }
-    //if (debug == 2) console.log("heatmap allDataPoints:");
-    //if (debug == 2) console.log(allDataPoints);
-  
-    // Update heatmap data
-    heatmapInstance.setData({
-        min: settings.minValue,
-        //max: settings.maxValue,
-        //max: dataMaxValue,  //this gives the overall max value the color of red
-        max: (dataMaxValue - 300),  //this gives the (overall max value)-300 counts the color of red - to ensure theres a lot of red on the heatmap
-        //data: pressureData
-        data: adjustedPressureData
-    });    
-    
-    // Draw grid 
-    //const canvas = document.getElementById('heatmap').querySelector('canvas');
-    const canvas2 = document.getElementById('heatmap').querySelector('canvas');
-    const ctx = canvas2.getContext('2d');
-    
-    //ctx.save();  //can't tell if these help or not.  commenting the save and restores out seems to maybe help a little on the heatmap problem
-  
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.lineWidth = 1;
-
-    // Draw vertical grid lines
-    const xStep = canvas2.width / settings.sensorsX;
-    for (let i = 0; i <= settings.sensorsX; i++) {
-        ctx.beginPath();
-        ctx.moveTo(i * xStep, 0);
-        ctx.lineTo(i * xStep, canvas2.height);
-        ctx.stroke();
-    }
-
-    // Draw horizontal grid lines
-    const yStep = canvas2.height / settings.sensorsY;
-    for (let i = 0; i <= settings.sensorsY; i++) {
-        ctx.beginPath();
-        ctx.moveTo(0, i * yStep);
-        ctx.lineTo(canvas2.width, i * yStep);
-        ctx.stroke();
-    }
-  
-  
-    //draw recorded swing current CoP on heatmap
-    let x = frame.cop.x;
-    let y = frame.cop.y;
-  
-    //CoP data has already been properly inverted... but that's for cartesian
-    //so for heatmap display, need to convert to screen coordinates (i.e. invert y again)  
-    y = settings.sensorsY - y;
-  
-    if (debug == 5) console.log("cop.x= " + x + "   cop.y= " + y);
-
-    //inversions already applied
-
-    // Scale coordinates to canvas size    
-    x = (x * canvas2.offsetWidth) / settings.sensorsX;    
-    y = (y * canvas2.offsetHeight) / settings.sensorsY;
-  
-    if (debug == 5) console.log("scaled cop.x= " + x + "   scaled cop.y= " + y);
-
-    ctx.beginPath();
-    ctx.fillStyle = 'yellow';
-    ctx.arc(x, y, 4, 0, Math.PI * 2);
-    ctx.fill();
-    
-    //draw recorded swing history CoP on heatmap
-    const slicedPlaybackData = playbackData.slice(0, frameIndex + 1);
-  
-    if (debug == 5) console.log("slicedPlaybackData= ", slicedPlaybackData);
-    
-    ctx.strokeStyle = 'yellow';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-
-    slicedPlaybackData.forEach((point, index) => {
-        let x = point.cop.x;
-        let y = point.cop.y;
-        
-          //pressure data has already been properly inverted... but that's for cartesian
-          //so for heatmap display, need to convert to screen coordinates (i.e. invert y again)       
-        y = settings.sensorsY - y;
-      
-        
-        // Scale coordinates to canvas size        
-        x = (x * canvas2.offsetWidth) / settings.sensorsX;    
-        y = (y * canvas2.offsetHeight) / settings.sensorsY;
-
-        if (index === 0) {
-            ctx.moveTo(x, y);
-        } else {
-            ctx.lineTo(x, y);
-        }
-    });
-
-    ctx.stroke();  
-    
-}
-
-
-
-//update recorded swing CoP Graph for Plotly Graphing
-function updateCoPGraphWithRecordedSwing(frame, frameIndex) {
-    if (!frame) return;
-  
-    let inchesPerSensorX = settings.matWidth / settings.sensorsX;
-    let inchesPerSensorY = settings.matHeight / settings.sensorsY;
-    //const xInches = copX * inchesPerSensorX;
-    //const yInches = copY * inchesPerSensorY;
-  
-    const slicedPlaybackData = playbackData.slice(0, frameIndex + 1);  //slice the playbackData array to the correct length based on the curent frame to show the history up through the current frame of the playback
-  
-    
-    let xValues, yValues;
-    let title, xAxisTitle, yAxisTitle;
-
-    if (copMode === 'normal') {
-        // Normal mode - use absolute coordinates
-        xValues = slicedPlaybackData.map(data => data.cop.x);
-        yValues = slicedPlaybackData.map(data => data.cop.y);
-        title = 'Center of Pressure (CoP) Graph';
-        xAxisTitle = 'X Position (coordinate)';
-        yAxisTitle = 'Y Position (coordinate)';
-    } else {
-        // Delta mode - calculate relative to oldest point
-        const basePoint = slicedPlaybackData[0].cop;
-        xValues = slicedPlaybackData.map(data => 
-            (data.cop.x - basePoint.x) * inchesPerSensorX
-        );
-        yValues = slicedPlaybackData.map(data => 
-            (data.cop.y - basePoint.y) * inchesPerSensorY
-        );
-        title = 'Center of Pressure (CoP) Delta';
-        xAxisTitle = 'X Delta (inches)';
-        yAxisTitle = 'Y Delta (inches)';
-    }
-  
-  
-    const trace = {
-        x: xValues,
-        y: yValues,
-        mode: 'lines+markers',
-        type: 'scatter',
-        marker: { color: 'blue', size: 6 },
-    };
-
-    const layout = {
-        title: title,
-        xaxis: {
-            title: xAxisTitle,
-            autorange: true,
-            //tickformat: '.2f',  // Format to 2 decimal places
-            //dtick: 0.01        // Minimum tick increment of 0.01
-            tickformat: '0.2f',    // Changed from '.2f' to '0.2f' for better compatibility
-            //tickformat: '0.1f',    // changed to 1 decimal place
-            nticks: 10,            // Suggest number of ticks
-            exponentformat: 'none', // Prevent scientific notation
-            showexponent: 'none'    // Prevent scientific notation
-        },
-        yaxis: {
-            title: yAxisTitle,
-            autorange: true,
-            //tickformat: '.2f',  // Format to 2 decimal places
-            //dtick: 0.01        // Minimum tick increment of 0.01
-            tickformat: '0.2f',    // Changed from '.2f' to '0.2f' for better compatibility
-            //tickformat: '0.1f',    // changed to 1 decimal place
-            nticks: 10,            // Suggest number of ticks
-            exponentformat: 'none', // Prevent scientific notation
-            showexponent: 'none'    // Prevent scientific notation
-        }
-    };  
-
-    // Update the graph
-    Plotly.newPlot('cop-graph', [trace], layout);
-}
-
-
-
-function calculatePressureDistributionFromRecordedSwing(frame) {
-    if (!playbackData || playbackData.length === 0 || !frame || frame.pressure.length === 0) return;
-
-    // ISSUE: The frame.pressure data coming from playbackData 
-    // already has inversions applied during recording
-    // This means we don't need to re-apply inversions here
-  
-    const method = document.querySelector('input[name="weightDistMethod"]:checked').value;
-
-    if (method === 'calibrated') {
-        // Use stance calibration boundaries if available
-        if (!stanceCalibrationData) {
-            console.warn('Stance calibration data not available, falling back to per-frame method');
-            calculatePressureDistributionFromRecordedSwingUsingRecordedBoundaries(frame);
-            return;
-        }
-
-        // Use the stance calibration boundaries
-        const boundaries = stanceCalibrationData;
-        const pressureData = frame.pressure;
-        
-        if (linearFit) {
-            //for linear relationship:
-            const totalPressure = pressureData.reduce((sum, r) => sum + r.value, 0);            
-            // Separate front and back foot readings using calibrated xMidpoint
-            const frontFootReadings = pressureData.filter(r => r.x <= boundaries.xRange.mid);
-            const backFootReadings = pressureData.filter(r => r.x > boundaries.xRange.mid);
-            // Process front foot using calibrated boundaries
-            const frontFootData = processFootDataFromRecordedSwingWithBoundaries(
-                frontFootReadings,
-                totalPressure,  //for linear relationship                
-                boundaries.frontFoot.minY + ((boundaries.frontFoot.maxY - boundaries.frontFoot.minY) / 2)
-            );
-            // Process back foot using calibrated boundaries
-            const backFootData = processFootDataFromRecordedSwingWithBoundaries(
-                backFootReadings,
-                totalPressure,  //for linear relationship                
-                boundaries.backFoot.minY + ((boundaries.backFoot.maxY - boundaries.backFoot.minY) / 2)
-            );
-            // Update display
-            updatePressureDisplayFromRecordedSwing('front', frontFootData);
-            updatePressureDisplayFromRecordedSwing('back', backFootData);          
-        }
-        else{          
-            // Calculate total weight instead of total pressure
-            const totalWeight = pressureData.reduce((sum, r) => sum + zValueToWeight(r.value), 0);  //for power fit relationship
-            // Separate front and back foot readings using calibrated xMidpoint
-            const frontFootReadings = pressureData.filter(r => r.x <= boundaries.xRange.mid);
-            const backFootReadings = pressureData.filter(r => r.x > boundaries.xRange.mid);
-            // Process front foot using calibrated boundaries
-            const frontFootData = processFootDataFromRecordedSwingWithBoundaries(
-                frontFootReadings,
-                totalWeight,  //for power fit relationship
-                boundaries.frontFoot.minY + ((boundaries.frontFoot.maxY - boundaries.frontFoot.minY) / 2)
-            );
-            // Process back foot using calibrated boundaries
-            const backFootData = processFootDataFromRecordedSwingWithBoundaries(
-                backFootReadings,                
-                totalWeight,  //for power fit relationship
-                boundaries.backFoot.minY + ((boundaries.backFoot.maxY - boundaries.backFoot.minY) / 2)
-            );
-            // Update display
-            updatePressureDisplayFromRecordedSwing('front', frontFootData);
-            updatePressureDisplayFromRecordedSwing('back', backFootData);          
-        }      
-      
-    } else {
-        // Use boundaries calculated from the entire recording
-        calculatePressureDistributionFromRecordedSwingUsingRecordedBoundaries(frame);
-    }
-}
-
-
-//for power relationship between weight and z values:
-// Also update calculatePressureDistributionFromRecordedSwing for consistency
-function calculatePressureDistributionFromRecordedSwingUsingRecordedBoundaries(frame) {
-    // Find overall boundaries from the entire recording
-    let overallMinX = Infinity;
-    let overallMaxX = -Infinity;
-    let frontFootMinY = Infinity;
-    let frontFootMaxY = -Infinity;
-    let backFootMinY = Infinity;
-    let backFootMaxY = -Infinity;
-
-    // Find overall X boundaries and initial foot separation point
-    playbackData.forEach(frameData => {
-        frameData.pressure.forEach(point => {
-            overallMinX = Math.min(overallMinX, point.x);
-            overallMaxX = Math.max(overallMaxX, point.x);
-        });
-    });
-  
-    // Calculate the midpoint for front/back foot separation
-    const xMidpoint = overallMinX + (overallMaxX - overallMinX) / 2;
-    
-    // Now find Y boundaries for each foot across all frames
-    playbackData.forEach(frameData => {
-        frameData.pressure.forEach(point => {
-            if (point.x <= xMidpoint) { // Front foot
-                frontFootMinY = Math.min(frontFootMinY, point.y);
-                frontFootMaxY = Math.max(frontFootMaxY, point.y);
-            } else { // Back foot
-                backFootMinY = Math.min(backFootMinY, point.y);
-                backFootMaxY = Math.max(backFootMaxY, point.y);
-            }
-        });
-    });
-  
-    // Calculate midpoints for toe/heel separation for each foot
-    const frontFootYMidpoint = frontFootMinY + ((frontFootMaxY - frontFootMinY) / 2);
-    const backFootYMidpoint = backFootMinY + ((backFootMaxY - backFootMinY) / 2);
-  
-    if (linearFit) {
-        //for linear fit:
-        // Process the current frame using these boundaries
-        const pressureData = frame.pressure;
-        const totalPressure = pressureData.reduce((sum, r) => sum + r.value, 0);
-        // Separate front and back foot readings
-        const frontFootReadings = pressureData.filter(r => r.x <= xMidpoint);
-        const backFootReadings = pressureData.filter(r => r.x > xMidpoint);
-        // Process each foot
-        const frontFootData = processFootDataFromRecordedSwingWithBoundaries(
-            frontFootReadings,
-            totalPressure,
-            frontFootYMidpoint
-        );
-        const backFootData = processFootDataFromRecordedSwingWithBoundaries(
-            backFootReadings,
-            totalPressure,
-            backFootYMidpoint
-        );
-        // Update display
-        updatePressureDisplayFromRecordedSwing('front', frontFootData);
-        updatePressureDisplayFromRecordedSwing('back', backFootData);
-    }
-    else { //for power fit:
-        const pressureData = frame.pressure;
-        // Calculate total weight instead of total pressure
-        const totalWeight = pressureData.reduce((sum, r) => sum + zValueToWeight(r.value), 0);
-        const frontFootReadings = pressureData.filter(r => r.x <= xMidpoint);
-        const backFootReadings = pressureData.filter(r => r.x > xMidpoint);
-        const frontFootData = processFootDataFromRecordedSwingWithBoundaries(
-            frontFootReadings,
-            totalWeight,
-            frontFootYMidpoint
-        );
-        const backFootData = processFootDataFromRecordedSwingWithBoundaries(
-            backFootReadings,
-            totalWeight,
-            backFootYMidpoint
-        );
-        updatePressureDisplayFromRecordedSwing('front', frontFootData);
-        updatePressureDisplayFromRecordedSwing('back', backFootData);
-    }
-
-    if (debug == 4) {
-        console.log("Overall boundaries:", {
-            xRange: { min: overallMinX, max: overallMaxX, mid: xMidpoint },
-            frontFoot: { minY: frontFootMinY, maxY: frontFootMaxY, midY: frontFootYMidpoint },
-            backFoot: { minY: backFootMinY, maxY: backFootMaxY, midY: backFootYMidpoint }
-        });
-    }
-  
-}
-
-
-
-function processFootDataFromRecordedSwingWithBoundaries(footReadings, totalPressure, yMidpoint) {
-    if (footReadings.length === 0) return { total: 0, toe: 0, heel: 0 };
-  
-    // Note: footReadings already have inversion applied from recording
-  
-    let footPercentage = 0;
-    let toePercentage = 0;
-    let heelPercentage = 0;
-  
-    if (linearFit) {
-        //for linear relationship:
-        const footTotal = footReadings.reduce((sum, r) => sum + r.value, 0);
-        footPercentage = Math.round((footTotal / totalPressure) * 100);
-        // Separate toe and heel readings using the established yMidpoint
-        const toeReadings = footReadings.filter(r => r.y >= yMidpoint);
-        const heelReadings = footReadings.filter(r => r.y < yMidpoint);
-        // Calculate toe and heel percentages relative to this foot's total pressure
-        const toeTotal = toeReadings.reduce((sum, r) => sum + r.value, 0);
-        const heelTotal = heelReadings.reduce((sum, r) => sum + r.value, 0);
-        //for linear relationship:
-        toePercentage = Math.round((toeTotal / footTotal) * 100) || 0;
-        heelPercentage = Math.round((heelTotal / footTotal) * 100) || 0;
-    }
-    else {
-        // Convert z-values to weights
-        const footWeights = footReadings.map(r => ({
-            ...r,
-            weight: zValueToWeight(r.value)
-        }));
-        //for power relationship:
-        const totalWeight = footWeights.reduce((sum, r) => sum + r.weight, 0);
-        //updated the calc pressure dist functions to send total weight which is already converted from raw z values to weight with the power fit eqn.
-        //const allTotalWeight = zValueToWeight(totalPressure); // Convert total pressure to weight
-        const allTotalWeight = totalPressure; //already converted from raw z values to weight in the calling function  
-        footPercentage = Math.round((totalWeight / allTotalWeight) * 100);        
-        // Separate toe and heel readings using the established yMidpoint
-        const toeReadings = footWeights.filter(r => r.y >= yMidpoint);
-        const heelReadings = footWeights.filter(r => r.y < yMidpoint);          
-        // Calculate toe and heel percentages relative to this foot's total weight
-        const toeWeight = toeReadings.reduce((sum, r) => sum + r.weight, 0);
-        const heelWeight = heelReadings.reduce((sum, r) => sum + r.weight, 0);
-        //for power relationship:
-        toePercentage = Math.round((toeWeight / totalWeight) * 100) || 0;
-        heelPercentage = Math.round((heelWeight / totalWeight) * 100) || 0;
-    }
-  
-    return {
-        total: footPercentage,
-        toe: toePercentage,
-        heel: heelPercentage
-    };
-  
-}
-
-
-function updatePressureDisplayFromRecordedSwing(foot, data) {
-    document.getElementById(`${foot}-percentage`).textContent = data.total;
-    document.getElementById(`${foot}-toe-percentage`).textContent = `Toe: ${data.toe}%`;
-    document.getElementById(`${foot}-heel-percentage`).textContent = `Heel: ${data.heel}%`;
-}
-
-
-function updateRawDataWithRecordedSwing(frame) {
-    const rawData = document.getElementById('raw-data');
-    const frameTime = (frame.timestamp - startTime) / 1000;  //timestamps in ms / 1000 => seconds
-      
-    rawData.innerHTML = `<div>[${frameTime.toFixed(3)}] Recorded readings:</div>`;
-    
-    frame.pressure.forEach(reading => {
-        rawData.innerHTML += `<div>x: ${reading.x}, y: ${reading.y}, pressure: ${reading.value}</div>`;
-    });
-  
-    if (frame.cop) {        
-        rawData.innerHTML += `<div>CoP: x= ${frame.cop.x}, y= ${frame.cop.y}</div>`;  //this is for inversion-adjusted cartesion coordinate data display
-    }
-  
-}
-
-
-// Add new function for recorded swing velocity display
-function updateVelocityGraphWithRecordedSwing(frame, frameIndex) {
-    if (!playbackData || frameIndex < 1) return;
-
-    const startTime = playbackData[0].timestamp;
-    const slicedPlaybackData = playbackData.slice(0, frameIndex + 1);
-
-    // Calculate velocity data for all frames up to current index
-    const velocityData = slicedPlaybackData.map((frame, i) => {
-        if (i === 0) return { time: 0, vx: 0, vy: 0 };
-
-        const prevFrame = slicedPlaybackData[i - 1];
-        const dt = (frame.timestamp - prevFrame.timestamp) / 1000; // seconds
-        if (dt === 0) return { time: 0, vx: 0, vy: 0 };
-
-        const inchesPerSensorX = settings.matWidth / settings.sensorsX;
-        const inchesPerSensorY = settings.matHeight / settings.sensorsY;
-
-        const dx = (frame.cop.x - prevFrame.cop.x) * inchesPerSensorX;
-        const dy = (frame.cop.y - prevFrame.cop.y) * inchesPerSensorY;
-
-        return {
-            time: (frame.timestamp - startTime) / 1000,
-            vx: dx / dt,
-            vy: dy / dt
-        };
-    });
-
-    const times = velocityData.map(point => point.time);
-    const vx = velocityData.map(point => point.vx);
-    const vy = velocityData.map(point => point.vy);
-
-    const lateralTrace = {
-        x: times,
-        y: vx,
-        mode: 'lines+markers',  // Add markers for data points
-        name: 'Lateral Velocity',
-        line: { color: 'blue' },
-        marker: {
-            size: 6,
-            color: 'blue'
-        }
-    };
-
-    const heelToeTrace = {
-        x: times,
-        y: vy,
-        mode: 'lines+markers',  // Add markers for data points
-        name: 'Heel-Toe Velocity',
-        line: { color: 'red' },
-        marker: {
-            size: 6,
-            color: 'red'
-        }
-    };
-
-    const layout = {
-        title: 'CoP Velocity Components',
-        xaxis: {
-            title: 'Time (s)',
-            showgrid: true,
-            zeroline: true,
-            range: [0, Math.max(...times)]  // Start at 0, end at max time
-        },
-        yaxis: {
-            title: 'Velocity (in/s)',
-            showgrid: true,
-            zeroline: true
-        },
-        showlegend: true
-    };
-
-    Plotly.newPlot('velocity-graph', [lateralTrace, heelToeTrace], layout);
-}
-
-
-
-// Add function for recorded swing force display
-function updateForceGraphWithRecordedSwing(frame, frameIndex) {
-    if (!playbackData || frameIndex < 0) return;
-
-    const startTime = playbackData[0].timestamp;
-    const slicedPlaybackData = playbackData.slice(0, frameIndex + 1);
-
-    // Calculate static reference force from pre-trigger data
-    if (!staticForceReference) {
-        // Find the frame where recording was triggered
-        const triggerIndex = playbackData.findIndex((frame, i, arr) => {
-            if (i === 0) return false;
-            const prevFrame = arr[i - 1];
-            const dt = (frame.timestamp - prevFrame.timestamp) / 1000;
-            if (dt === 0) return false;
-
-            const inchesPerSensorX = settings.matWidth / settings.sensorsX;
-            const inchesPerSensorY = settings.matHeight / settings.sensorsY;
-            const dx = (frame.cop.x - prevFrame.cop.x) * inchesPerSensorX;            
-            const dy = (frame.cop.y - prevFrame.cop.y) * inchesPerSensorY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            return distance >= settings.copTriggerThreshold;
-        });
-
-        // Use average of pre-trigger frames as reference
-        if (triggerIndex > 0) {
-            const preTriggerFrames = playbackData.slice(0, triggerIndex);
-            staticForceReference = preTriggerFrames.reduce((sum, frame) => {
-                const forces = calculateForces(frame.pressure);
-                return sum + forces.total;
-            }, 0) / preTriggerFrames.length;
-        }
-    }
-
-    // Calculate force data for all frames up to current index
-    const forceData = slicedPlaybackData.map(frame => {
-        const forces = calculateForces(frame.pressure);
-        return {
-            time: (frame.timestamp - startTime) / 1000,
-            total: forces.total,
-            left: forces.left,
-            right: forces.right
-        };
-    });
-    
-    const times = forceData.map(point => point.time);
-    const totalRef = staticForceReference || forceData[0].total;
-  
-    // Calculate percentages based on the current calculation method
-    let leftForces, rightForces, totalForces;
-    
-    if (linearFit) {
-        // For linear relationship - raw pressure values
-        leftForces = forceData.map(point => (point.left / point.total) * 100);
-        rightForces = forceData.map(point => (point.right / point.total) * 100);
-        totalForces = forceData.map(point => (point.total / totalRef) * 100);
-    } else {
-        // For power fit relationship - converted to weight values
-        leftForces = forceData.map(point => (point.left / point.total) * 100);
-        rightForces = forceData.map(point => (point.right / point.total) * 100);
-        // For total force, we're already working with weight values from calculateForces
-        totalForces = forceData.map(point => (point.total / totalRef) * 100);
-    }
-  
-
-    const traces = [
-        {
-            x: times,
-            y: leftForces,
-            mode: 'lines+markers',
-            name: 'Left Foot Force',
-            line: { color: 'blue' },
-            marker: { size: 6, color: 'blue' }
-        },
-        {
-            x: times,
-            y: rightForces,
-            mode: 'lines+markers',
-            name: 'Right Foot Force',
-            line: { color: 'red' },
-            marker: { size: 6, color: 'red' }
-        },
-        {
-            x: times,
-            y: totalForces,
-            mode: 'lines+markers',
-            name: 'Total Force',
-            line: { color: 'green' },
-            marker: { size: 6, color: 'green' }
-        }
-    ];
-
-    const layout = {
-        
-        //title: 'Vertical Ground Reaction Force',
-        
-        title: {
-            text: 'Vertical Ground Reaction Force' + (linearFit ? ' (Linear)' : ' (Power Fit)'),
-            font: { size: 16 }
-        },
-        
-        xaxis: {
-            title: 'Time (s)',
-            showgrid: true,
-            zeroline: true,
-            range: [0, Math.max(...times)]
-        },
-        yaxis: {
-            title: 'Force (% of static weight)',
-            showgrid: true,
-            zeroline: true
-        },
-        showlegend: true
-    };
-
-    Plotly.newPlot('force-graph', traces, layout);
-}
-
-
-function togglePlay() {
-    if (isPlaying) {
-        stopPlayback();
-    } else {
-        playForward();
-    }
-}
-
-function playForward() {
-    //stopPlayback();
-    if (isPlaying) return;
-    isPlaying = true;
-    document.getElementById('playPause').textContent = '⏸';
-    startPlayback(1);
-}
-
-function playReverse() {
-    if (isPlaying) return;
-    //stopPlayback();
-    isPlaying = true;
-    document.getElementById('playPause').textContent = '⏸';
-    startPlayback(-1);
-}
-
-function startPlayback(direction) {    
-    const frameLength = playbackData.length;
-    const startTime = playbackData[0].timestamp;
-    const endTime = playbackData[frameLength - 1].timestamp;
-    const timePerFrameMs = (endTime - startTime) / frameLength;
-  
-    playbackInterval = setInterval(() => {
-        if (direction === 1) {
-            currentFrameIndex++;
-            if (currentFrameIndex >= playbackData.length) {
-                stopPlayback();
-                return;
-            }
-        } else {
-            currentFrameIndex--;
-            if (currentFrameIndex < 0) {
-                stopPlayback();
-                return;
-            }
-        }
-        showFrame(currentFrameIndex);
-    }, timePerFrameMs / settings.playbackSpeed);
-}
-
-function stopPlayback() {
-    if (playbackInterval) {
-        clearInterval(playbackInterval);
-        playbackInterval = null;
-    }
-    isPlaying = false;
-    document.getElementById('playPause').textContent = '⏯';
-}
-
-function showNextFrame() {
-    stopPlayback();
-    if (currentFrameIndex < playbackData.length - 1) {
-        showFrame(++currentFrameIndex);
-    }
-}
-
-function showPrevFrame() {
-    stopPlayback();
-    if (currentFrameIndex > 0) {
-        showFrame(--currentFrameIndex);
-    }
-}
-
-function skipToFrame(index) {
-    stopPlayback();
-    if (index === -1) index = playbackData.length - 1;
-    currentFrameIndex = index;
-    showFrame(currentFrameIndex);
-}
-
-
-// Modified handleData function to handle incoming data chunks
-function handleData(event) {
-    const decoder = new TextDecoder();
-    const chunk = decoder.decode(event.target.value);
-    
-    if (debug == 1) console.log("Received chunk:", chunk);
-    
-    // Append the new chunk to our buffer
-    dataBuffer += chunk;
-    
-    // Process any complete frames in the buffer
-    let newlineIndex;
-    while ((newlineIndex = dataBuffer.indexOf('\n')) !== -1) {
-        // Extract the complete frame
-        const frame = dataBuffer.substring(0, newlineIndex).trim();
-        // Remove the processed frame from the buffer
-        dataBuffer = dataBuffer.substring(newlineIndex + 1);
-        
-        if (debug == 1) console.log("Processing complete frame:", frame);
-        
-        // Process the complete frame
-        processFrame(frame);
-    }
-}
-
-// New function to process complete frames
-function processFrame(frame) {
-    // Reset clear timeout
-    //if (clearTimeout) clearTimeout(clearTimeout);
-    if (myClearTimeout) clearTimeout(myClearTimeout);
-    
-    lastDataTimestamp = Date.now();  //Date.now() is in milliseconds since epoch
-    const { readings, cop } = parsePressureData(frame);
-    
-    // Only update if we have readings
-    if (readings.length > 0) {
-      
-        // Add calibration data collection here
-        if (isCalibrating) {
-            stanceCalibrationData.push([...readings]); // Store a copy of the readings
-            
-            // Optional: Check if calibration time is exceeded here
-            if (Date.now() - calibrationStartTime >= CALIBRATION_DURATION) {
-                finishCalibration();
-            }
-        }
-      
-        // Add to history
-        dataHistory.push({
-            timestamp: lastDataTimestamp,
-            readings: readings
-        });
-        
-        // Trim history if needed
-        if (dataHistory.length > settings.historyLength) {
-            dataHistory = dataHistory.slice(-settings.historyLength);
-        }   
-      
-        if (debug == 6) console.log("dataHistory: ", dataHistory);
-      
-        if (cop) {
-            copHistory.push(cop);  //this adds an element to the end of the array
-
-            // Trim CoP history if needed
-            if (copHistory.length > settings.copHistoryLength) {
-                copHistory = copHistory.slice(-settings.copHistoryLength);                
-            }
-          
-            if (debug == 6) console.log("copHistory: ", copHistory);
-          
-            // Add velocity calculation
-            const velocities = calculateVelocities(cop, lastDataTimestamp);
-            updateVelocityGraph();
-          
-        }
-        
-        // Add force calculations and updates
-        const forces = calculateForces(readings);
-        updateForceHistory(forces, lastDataTimestamp);
-        updateForceGraph();
-      
-      
-        updateHeatmapWithHistory();
-        
-        updateRawData(readings, cop);
-        updateCoPGraph(); // Add this line
-        //calculateFootPressureDistribution(readings);  //this was for only doing front vs back foot  // Add this line where you process new sensor readings      
-        calculatePressureDistribution(readings);  //this does front vs back foot with toe vs heel
-        //processCoPData(cop);
-        processCoPData(readings, cop);
-             
-    }
-  
-    
-    // Set new clear timeout
-    myClearTimeout = setTimeout(() => {
-        dataHistory = [];
-        heatmapInstance.setData({ data: [] });
-      
-        //clear the CoP trace drawn on top of the heatmap
-        let overlayCanvas = document.getElementById('heatmap-overlay');
-        const ctx = overlayCanvas.getContext('2d');
-        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-      
-        clearCoPGraph(); // Clear the CoP graph
-        clearVelocityGraph(); // Add this line
-        clearForceGraph();
-        updateConnectionInfo('No data received for ' + (settings.clearTime / 1000) + ' seconds - display cleared');
-    }, settings.clearTime);
-    
-}
-
-
-function clearVelocityGraph() {
-    velocityHistory = [];
-    const container = document.getElementById('velocity-graph');
-    if (container) {
-        Plotly.newPlot(container, [], {
+        const layout = {
             title: 'CoP Velocity Components',
-            xaxis: { title: 'Time (s)' },
-            yaxis: { title: 'Velocity (in/s)' }
-        });
-    }
-}
-
-
-function parsePressureData(data) {
-    try {
-        //if (debug == 1) console.log("incoming data = " + data);
-      
-        // Handle empty frame
-        if (data === '[]') {
-            return { readings: [], cop: null };
-        }
-
-        // Remove outer brackets and check for COP data        
-        let cleanData = data.replace(/^\[{1,2}|\]{1,2}$/g, '');  // Handle both single and double brackets
-        let copData = null;
-      
-        if (debug == 1) console.log("cleanData(outer brackets removed)-before cop extract = " + cleanData);
-
-        // Check for and extract COP data
-        if (cleanData.includes('cop:')) {
-            const [pressureData, cop] = cleanData.split('cop:');
-            cleanData = pressureData.replace(/\]$/, ''); // Remove any trailing bracket
-            
-            if (debug == 1) console.log("cop (after splitting on cop:) = " + cop);
-          
-            // Remove curly braces and parse CoP coordinates
-            const copClean = cop.replace(/{|}|\s/g, '');  // Remove curly braces and any whitespace
-            if (debug == 1) console.log("CoP data after cleaning:", copClean);
-            
-            const copCoords = copClean.split(',').map(Number);
-            copData = {
-                x: copCoords[0],
-                y: copCoords[1]
-            };
-            
-            if (debug == 1) {
-                console.log("Pressure data after cop extract:", cleanData);
-                console.log("Parsed CoP data:", copData);
-            }
-        }
-      
-        if (debug == 1) console.log("cleanData(outer brackets removed)-after cop extract = " + cleanData);
-
-        // Handle single data point case
-        if (!cleanData.includes('},{')) {
-            // Single data point format: {x,y,value}
-            const values = cleanData.replace(/{|}/g, '').split(',').map(Number);
-            return {
-                readings: [{
-                    x: values[0],
-                    y: values[1],
-                    value: values[2]
-                }],
-                cop: copData
-            };
-        }
-
-        // Parse multiple pressure readings
-        const readings = cleanData.split('},{').map(reading => {
-            const values = reading.replace(/{|}/g, '').split(',').map(Number);
-            return {
-                x: values[0],
-                y: values[1],
-                value: values[2]
-            };
-        });
-
-        return {
-            readings,
-            cop: copData
+            xaxis: {
+                title: 'Time (s)',
+                showgrid: true,
+                zeroline: true,
+                autorange: 'reversed',
+                range: [-(this.state.settings.copHistoryLength / 30), 0]
+            },
+            yaxis: {
+                title: 'Velocity (in/s)',
+                showgrid: true,
+                zeroline: true
+            },
+            showlegend: true
         };
-    } catch (error) {
-        console.error('Error parsing pressure data:', error);
-        updateConnectionInfo('Error parsing data: ' + error.message, true);
-        return { readings: [], cop: null };
+        
+        Plotly.newPlot('velocity-graph', traces, layout);
     }
-}
-
-
-// Update status message
-function updateStatus(message) {
-    document.getElementById('status').textContent = message;
-}
-
-// Update connection info
-function updateConnectionInfo(message, isError = false) {
-    const connectionInfo = document.getElementById('connection-info');
-    const timestamp = new Date().toLocaleTimeString();
-    const color = isError ? '#ff4444' : '#4CAF50';
-    connectionInfo.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
-    connectionInfo.scrollTop = connectionInfo.scrollHeight;
-}
-
-// Update raw data display
-//function updateRawData(readings) {
-function updateRawData(readings, cop) {
-    const rawData = document.getElementById('raw-data');
-    const timestamp = new Date().toLocaleTimeString();
-  
-    // Adjust X and Y coordinates based on inversion setting
-    const adjustedReadings = readings.map(reading => ({
-        ...reading,
-        adjustedX: settings.invertX ? (settings.sensorsX - reading.x) : reading.x,
-        adjustedY: settings.invertY ? (settings.sensorsY - reading.y) : reading.y,
-        adjustedPressure: reading.value
-    }));
-  
-    // Adjust CoP X and Y coordinates based on inversion setting  
-    let adjustedCoPx = cop.x;
-    let adjustedCoPy = cop.y;  
-    // Apply inversion if enabled
-    if (settings.invertX) {
-        adjustedCoPx = settings.sensorsX - adjustedCoPx;
-    }    
-    if (settings.invertY) {
-        adjustedCoPy = settings.sensorsY - adjustedCoPy;
-    }
-  
-    rawData.innerHTML = `<div>[${timestamp}] Latest readings:</div>`;
     
-    adjustedReadings.forEach(adjustedReading => {
-        rawData.innerHTML += `<div>x: ${adjustedReading.adjustedX}, y: ${adjustedReading.adjustedY}, pressure: ${adjustedReading.adjustedPressure}</div>`;
-    });
-  
-    if (cop) {
-        //rawData.innerHTML += `<div>CoP: x= ${cop.x}, y= ${cop.y}</div>`;  //this is for un-adjusted RAW data
-        rawData.innerHTML += `<div>CoP: x= ${adjustedCoPx}, y= ${adjustedCoPy}</div>`;  //this is for inversion-adjusted cartesion coordinate data display
-    }
-}
-
-
-//changed to automatically connect and also automatically try to reconnect up to 3 times
-async function connectToDevice(device) {
-    const MAX_RETRY_ATTEMPTS = 3;
-    const RETRY_DELAY = 1000; // 1 second delay between retries
-    
-    async function attemptConnection(retryCount = 0) {
-        try {
-            bluetoothDevice = device;
-            dataBuffer = '';
-            
-            updateStatus('Connecting to device...');
-            updateConnectionInfo(`Connecting to device: ${device.name || 'Unnamed Device'} (Attempt ${retryCount + 1})`);
-            
-            // Add disconnect event listener
-            device.addEventListener('gattserverdisconnected', handleDisconnection);
-            
-            const server = await device.gatt.connect();
-            updateConnectionInfo('GATT server connected');
-            
-            // Try Nordic UART first, then Microchip UART
-            let service;
-            try {
-                service = await server.getPrimaryService(MICROCHIP_UART_SERVICE);
-                updateConnectionInfo('Connected using Microchip UART Service');
-                characteristic = await service.getCharacteristic(MICROCHIP_UART_TX);
-            } catch {                
-                service = await server.getPrimaryService(NORDIC_UART_SERVICE);
-                updateConnectionInfo('Connected using Nordic UART Service');
-                characteristic = await service.getCharacteristic(NORDIC_UART_TX);
+    updateForceGraph() {
+        const forceHistory = this.state.visualization.forceHistory;
+        if (forceHistory.length < 2) return;
+        
+        const mostRecentTime = forceHistory[forceHistory.length - 1].timestamp;
+        const times = forceHistory.map(point => 
+            (point.timestamp - mostRecentTime) / 1000
+        );
+        
+        const referenceForce = this.state.recording.staticForceReference || 
+                             forceHistory[0].total;
+        
+        const useLinearFit = true; // Could be made configurable
+        
+        let leftForces, rightForces, totalForces;
+        
+        if (useLinearFit) {
+            leftForces = forceHistory.map(point => (point.left / point.total) * 100);
+            rightForces = forceHistory.map(point => (point.right / point.total) * 100);
+            totalForces = forceHistory.map(point => (point.total / referenceForce) * 100);
+        } else {
+            leftForces = forceHistory.map(point => (point.left / point.total) * 100);
+            rightForces = forceHistory.map(point => (point.right / point.total) * 100);
+            totalForces = forceHistory.map(point => (point.total / referenceForce) * 100);
+        }
+        
+        const traces = [
+            {
+                x: times,
+                y: leftForces,
+                mode: 'lines+markers',
+                name: 'Left Foot Force',
+                line: { color: 'blue' },
+                marker: { size: 6, color: 'blue' }
+            },
+            {
+                x: times,
+                y: rightForces,
+                mode: 'lines+markers',
+                name: 'Right Foot Force',
+                line: { color: 'red' },
+                marker: { size: 6, color: 'red' }
+            },
+            {
+                x: times,
+                y: totalForces,
+                mode: 'lines+markers',
+                name: 'Total Force',
+                line: { color: 'green' },
+                marker: { size: 6, color: 'green' }
             }
+        ];
+        
+        const layout = {
+            title: {
+                text: `Vertical Ground Reaction Force ${useLinearFit ? '(Linear)' : '(Power Fit)'}`,
+                font: { size: 16 }
+            },
+            xaxis: {
+                title: 'Time (s)',
+                showgrid: true,
+                zeroline: true,
+                autorange: 'reversed',
+                range: [-(this.state.settings.copHistoryLength / 30), 0]
+            },
+            yaxis: {
+                title: 'Force (% of static weight)',
+                showgrid: true,
+                zeroline: true
+            },
+            showlegend: true
+        };
+        
+        Plotly.newPlot('force-graph', traces, layout);
+    }
+}
 
-            characteristic.addEventListener('characteristicvaluechanged', handleData);
-            await characteristic.startNotifications();
+
+// Bluetooth Connection Handler
+class BluetoothManager {
+    constructor(appState) {
+        this.state = appState;
+        this.maxRetryAttempts = CONFIG.BLE.MAX_RETRY_ATTEMPTS;
+        this.retryDelay = CONFIG.BLE.RETRY_DELAY;
+    }
+    
+    async scanForDevices() {
+        try {
+            Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Starting device scan...');
             
-            updateConnectionInfo('Notifications started - ready to receive data');
-            updateStatus('Connected and receiving data');
+            const device = await navigator.bluetooth.requestDevice({
+                filters: [
+                    { services: [CONFIG.BLE.NORDIC_UART_SERVICE] },
+                    { services: [CONFIG.BLE.MICROCHIP_UART_SERVICE] }
+                ]
+            });
             
-            // Reset auto-reconnect state since we successfully connected
-            device.autoReconnectEnabled = true;
-          
-            // Enable disconnect button and disable scan button
-            document.getElementById('disconnectButton').disabled = false;
-            document.getElementById('scanButton').disabled = true;
-          
+            Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', `Device found: ${device.name || 'Unnamed Device'}`);
+            
+            await this.connectToDevice(device);
             
         } catch (error) {
-            console.error('Connection error:', error);
-            updateConnectionInfo(`Connection failed (Attempt ${retryCount + 1}): ${error.message}`, true);
+            Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Scanning failed', error);
+            throw error;
+        }
+    }
+    
+    async connectToDevice(device, retryCount = 0) {
+        try {
+            this.state.bluetooth.device = device;
+            this.state.dataBuffer = '';
             
-            if (retryCount < MAX_RETRY_ATTEMPTS) {
-                updateConnectionInfo(`Retrying connection in ${RETRY_DELAY/1000} seconds...`);
-                setTimeout(() => attemptConnection(retryCount + 1), RETRY_DELAY);
+            Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 
+                `Connecting to device: ${device.name || 'Unnamed Device'} (Attempt ${retryCount + 1})`
+            );
+            
+            device.addEventListener('gattserverdisconnected', this.handleDisconnection.bind(this));
+            
+            const server = await device.gatt.connect();
+            Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'GATT server connected');
+            
+            // Try Microchip UART first, then Nordic UART
+            let service;
+            try {
+                service = await server.getPrimaryService(CONFIG.BLE.MICROCHIP_UART_SERVICE);
+                Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Connected using Microchip UART Service');
+                this.state.bluetooth.characteristic = await service.getCharacteristic(CONFIG.BLE.MICROCHIP_UART_TX);
+            } catch {
+                service = await server.getPrimaryService(CONFIG.BLE.NORDIC_UART_SERVICE);
+                Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Connected using Nordic UART Service');
+                this.state.bluetooth.characteristic = await service.getCharacteristic(CONFIG.BLE.NORDIC_UART_TX);
+            }
+            
+            this.state.bluetooth.characteristic.addEventListener(
+                'characteristicvaluechanged',
+                this.handleData.bind(this)
+            );
+            await this.state.bluetooth.characteristic.startNotifications();
+            
+            this.state.bluetooth.isConnected = true;
+            device.autoReconnectEnabled = true;
+            
+            this.updateUIForConnection(true);
+            Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Notifications started - ready to receive data');
+            
+        } catch (error) {
+            Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', `Connection failed (Attempt ${retryCount + 1})`, error);
+            
+            if (retryCount < this.maxRetryAttempts) {
+                Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 
+                    `Retrying connection in ${this.retryDelay/1000} seconds...`
+                );
+                setTimeout(() => this.connectToDevice(device, retryCount + 1), this.retryDelay);
             } else {
-                updateConnectionInfo('Maximum retry attempts reached. Please try scanning again.', true);
-                updateStatus('Connection failed after multiple attempts');
+                Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Maximum retry attempts reached');
+                throw error;
             }
         }
     }
     
-    // Start the connection attempt
-    await attemptConnection();
-}
-
-
-
-//changed to automatically connect and also automatically try to reconnect up to 3 times
-function handleDisconnection(event) {
-    const device = event.target;
-    
-    if (device.autoReconnectEnabled) {    
-        updateConnectionInfo('Device disconnected unexpectedly!', true);
-    }
-    
-    updateStatus('Device disconnected');
-    
-    // Reset variables
-    characteristic = null;
-    dataBuffer = '';
-  
-    // Update button states
-    document.getElementById('disconnectButton').disabled = true;
-    document.getElementById('scanButton').disabled = false;
-    
-    // Only attempt to reconnect if auto-reconnect is still enabled
-    if (device.autoReconnectEnabled) {
-        updateConnectionInfo('Attempting to reconnect...');
-        connectToDevice(device).catch(error => {
-            console.error('Auto-reconnect failed:', error);
-            updateConnectionInfo('Auto-reconnect failed: ' + error.message, true);
-        });
-    } else {
-        updateConnectionInfo('Device disconnected - scan to reconnect');
-    }
-  
-}
-
-
-//changed to automatically connect
-async function scanForDevices() {
-    try {
-        updateStatus('Scanning for devices...');
-        updateConnectionInfo('Starting device scan...');
+    handleData(event) {
+        const decoder = new TextDecoder();
+        const chunk = decoder.decode(event.target.value);
         
-        const device = await navigator.bluetooth.requestDevice({
-            filters: [
-                { services: [NORDIC_UART_SERVICE] },
-                { services: [MICROCHIP_UART_SERVICE] }
-            ]
-        });
+        //Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Received data chunk', chunk);
+        //Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Raw data chunk received:', chunk);
+      
+        // Convert ArrayBuffer to regular array for logging
+        const rawData = Array.from(event.target.value);
+        Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Raw data received as bytes:', rawData);
+        Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Decoded chunk:', chunk);
 
-        updateConnectionInfo(`Device found: ${device.name || 'Unnamed Device'}`);
-
-        // Automatically connect to the device after selection
-        await connectToDevice(device);
         
-    } catch (error) {
-        console.error('Scanning error:', error);
-        updateConnectionInfo('Scanning failed: ' + error.message, true);
-        updateStatus('Scanning failed: ' + error);
-    }
-}
-
-
-async function disconnectDevice() {
-    try {
-        if (bluetoothDevice && bluetoothDevice.gatt.connected) {
-            // Disable auto-reconnect before disconnecting
-            bluetoothDevice.autoReconnectEnabled = false;
-            await bluetoothDevice.gatt.disconnect();
-            updateConnectionInfo('Device disconnected successfully');
-            updateStatus('Disconnected');
+        this.state.dataBuffer += chunk;
+        
+        let newlineIndex;
+        while ((newlineIndex = this.state.dataBuffer.indexOf('\n')) !== -1) {
+            const frame = this.state.dataBuffer.substring(0, newlineIndex).trim();
+            this.state.dataBuffer = this.state.dataBuffer.substring(newlineIndex + 1);
             
-            // Reset variables
-            characteristic = null;
-            dataBuffer = '';
-            dataHistory = [];
-            copHistory = [];
-            
-            // Clear visualizations
-            if (heatmapInstance) {
-                heatmapInstance.setData({ data: [] });
+            //Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Complete frame extracted:', frame);
+            Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Frame extracted:', frame);
+          
+            /*
+            if (frame) {
+                //app.processFrame(frame);
+                this.state.app.processFrame(frame);
+            }
+            */
+          
+            if (frame) {
+                try {
+                    // Make sure we're calling the right instance method
+                    if (this.state.app && typeof this.state.app.processFrame === 'function') {
+                        this.state.app.processFrame(frame);
+                    } else {
+                        Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Invalid app reference or processFrame method');
+                    }
+                } catch (error) {
+                    Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Error processing frame:', error);
+                }
             }
           
-            //clear the CoP trace drawn on top of the heatmap
-            let overlayCanvas = document.getElementById('heatmap-overlay');
-            const ctx = overlayCanvas.getContext('2d');
-            ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
           
-            clearCoPGraph();
-            
-            // Disable disconnect button and enable scan button
-            document.getElementById('disconnectButton').disabled = true;
-            document.getElementById('scanButton').disabled = false;
-            
+        }
+    }
+    
+    handleDisconnection(event) {
+        const device = event.target;
+        
+        if (device.autoReconnectEnabled) {
+            Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Device disconnected unexpectedly!');
+        }
+        
+        this.state.bluetooth.isConnected = false;
+        this.state.bluetooth.characteristic = null;
+        this.state.dataBuffer = '';
+        
+        this.updateUIForConnection(false);
+        
+        if (device.autoReconnectEnabled) {
+            Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Attempting to reconnect...');
+            this.connectToDevice(device).catch(error => {
+                Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Auto-reconnect failed', error);
+            });
         } else {
-            updateConnectionInfo('No device connected');
+            Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Device disconnected - scan to reconnect');
         }
-    } catch (error) {
-        console.error('Disconnect error:', error);
-        updateConnectionInfo('Disconnect failed: ' + error.message, true);
+    }
+    
+    async disconnect() {
+        try {
+            if (this.state.bluetooth.device && this.state.bluetooth.device.gatt.connected) {
+                this.state.bluetooth.device.autoReconnectEnabled = false;
+                await this.state.bluetooth.device.gatt.disconnect();
+                
+                Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Device disconnected successfully');
+                
+                this.state.bluetooth.isConnected = false;
+                this.state.bluetooth.characteristic = null;
+                this.state.dataBuffer = '';
+                
+                // Clear visualizations
+                app.visualizer.clearAll();
+                this.updateUIForConnection(false);
+            }
+        } catch (error) {
+            Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Disconnect failed', error);
+            throw error;
+        }
+    }
+    
+    updateUIForConnection(isConnected) {
+        document.getElementById('disconnectButton').disabled = !isConnected;
+        document.getElementById('scanButton').disabled = isConnected;
+        document.getElementById('status').textContent = 
+            isConnected ? 'Connected and receiving data' : 'Disconnected';
+    }
+}
+
+// Swing Recording Manager
+class RecordingManager {
+    constructor(appState) {
+        this.state = appState;
+    }
+    
+    startCountdown() {
+        const readyButton = document.getElementById('readyButton');
+        const countdownDisplay = document.getElementById('countdown');
+        readyButton.disabled = true;
+        let count = 5;
+        
+        const countInterval = setInterval(() => {
+            countdownDisplay.textContent = count;
+            count--;
+            
+            if (count < 0) {
+                clearInterval(countInterval);
+                countdownDisplay.textContent = 'START!';
+                setTimeout(() => {
+                    countdownDisplay.textContent = '';
+                    this.startRecording();
+                }, 1000);
+            }
+        }, 1000);
+    }
+    
+    startRecording() {
+        this.state.recording.isRecording = true;
+        this.state.recording.recordingStarted = false;
+        this.state.recording.copPathData = [];
+        this.state.recording.playbackData = [];
+        this.state.recording.lastCopPosition = null;
+        this.state.recording.startTime = null;
+        this.state.recording.maxSpeedRecorded = 0;
+    }
+    
+    processCoPData(readings, cop) {
+        if (!this.state.recording.isRecording) return;
+        
+        let copX = this.state.settings.invertX ? 
+            (this.state.settings.sensorsX - cop.x) : cop.x;
+        let copY = this.state.settings.invertY ? 
+            (this.state.settings.sensorsY - cop.y) : cop.y;
+        
+        const inchesPerSensorX = this.state.settings.matWidth / this.state.settings.sensorsX;
+        const inchesPerSensorY = this.state.settings.matHeight / this.state.settings.sensorsY;
+        
+        const xInches = copX * inchesPerSensorX;
+        const yInches = copY * inchesPerSensorY;
+        
+        if (!this.state.recording.lastCopPosition) {
+            this.state.recording.lastCopPosition = { x: xInches, y: yInches };
+            return;
+        }
+        
+        const distance = Utils.calculateDistance(
+            { x: xInches, y: yInches },
+            this.state.recording.lastCopPosition
+        );
+        
+        if (!this.state.recording.recordingStarted && 
+            distance >= this.state.settings.copTriggerThreshold) {
+            this.state.recording.recordingStarted = true;
+            this.state.recording.startTime = Date.now();
+        }
+        
+        if (this.state.recording.recordingStarted) {
+            const timestamp = Date.now();
+            const currentTime = (timestamp - this.state.recording.startTime) / 1000;
+            
+            this.recordFrame(readings, cop, timestamp);
+            
+            if (this.checkSwingStop(currentTime, distance)) {
+                this.stopRecording();
+            }
+        }
+        
+        this.state.recording.lastCopPosition = { x: xInches, y: yInches };
+    }
+    
+    recordFrame(readings, cop, timestamp) {
+        const frame = {
+            timestamp,
+            pressure: readings.map(reading => ({
+                ...reading,
+                x: this.state.settings.invertX ? 
+                    (this.state.settings.sensorsX - reading.x) : reading.x,
+                y: this.state.settings.invertY ? 
+                    (this.state.settings.sensorsY - reading.y) : reading.y,
+                value: reading.value
+            })),
+            cop: {
+                x: this.state.settings.invertX ? 
+                    (this.state.settings.sensorsX - cop.x) : cop.x,
+                y: this.state.settings.invertY ? 
+                    (this.state.settings.sensorsY - cop.y) : cop.y
+            }
+        };
+        
+        this.state.recording.playbackData.push(frame);
+        this.updateCoPStats(frame);
+    }
+    
+    checkSwingStop(currentTime, distance) {
+        if (!this.state.recording.recordingStarted) return false;
+        
+        if (this.state.settings.useFixedDurationStop && 
+            currentTime >= this.state.settings.swingDuration) {
+            return true;
+        }
+        
+        if (this.state.settings.useMovementThresholdStop && 
+            distance <= this.state.settings.stopTriggerThreshold) {
+            return true;
+        }
+        
+        return false;
+    }
+    
+    stopRecording() {
+        this.state.recording.isRecording = false;
+        this.state.recording.recordingStarted = false;
+        
+        document.querySelector('.playback-controls').style.display = 'block';
+        app.playbackManager.initializePlayback();
     }
 }
 
 
-// Event listeners
-document.getElementById('scanButton').addEventListener('click', scanForDevices);
-// Add event listener for disconnect button
-document.getElementById('disconnectButton').addEventListener('click', disconnectDevice);
+// Playback Manager
+class PlaybackManager {
+    constructor(appState) {
+        this.state = appState;
+        this.isPlaying = false;
+        this.playbackInterval = null;
+        this.currentFrameIndex = 0;
+        
+        this.initializeControls();
+    }
+    
+    initializeControls() {
+        document.getElementById('skipStart').addEventListener('click', () => this.skipToFrame(0));
+        document.getElementById('reversePlay').addEventListener('click', () => this.playReverse());
+        document.getElementById('prevFrame').addEventListener('click', () => this.showPrevFrame());
+        document.getElementById('playPause').addEventListener('click', () => this.togglePlay());
+        document.getElementById('nextFrame').addEventListener('click', () => this.showNextFrame());
+        document.getElementById('forwardPlay').addEventListener('click', () => this.playForward());
+        document.getElementById('skipEnd').addEventListener('click', () => this.skipToFrame(-1));
+        
+        document.getElementById('frameSlider').addEventListener('input', (e) => {
+            this.skipToFrame(parseInt(e.target.value));
+        });
+        
+        document.getElementById('playbackSpeed').addEventListener('change', (e) => {
+            this.state.settings.playbackSpeed = parseFloat(e.target.value);
+            if (this.isPlaying) {
+                this.stopPlayback();
+                this.startPlayback();
+            }
+        });
+    }
+    
+    initializePlayback() {
+        if (!this.state.recording.playbackData?.length) {
+            Logger.log(CONFIG.DEBUG.ERROR, 'Playback', 'No recorded data to playback');
+            return;
+        }
+        
+        const slider = document.getElementById('frameSlider');
+        slider.max = this.state.recording.playbackData.length - 1;
+        slider.value = 0;
+        this.currentFrameIndex = 0;
+        this.showFrame(0);
+    }
+    
+    showFrame(frameIndex) {
+        if (!this.state.recording.playbackData || 
+            frameIndex < 0 || 
+            frameIndex >= this.state.recording.playbackData.length) return;
+        
+        const frame = this.state.recording.playbackData[frameIndex];
+        const startTime = this.state.recording.playbackData[0].timestamp;
+        const frameTime = (frame.timestamp - startTime) / 1000;
+        
+        document.getElementById('timeDisplay').textContent = frameTime.toFixed(3) + 's';
+        document.getElementById('frameSlider').value = frameIndex;
+        
+        this.updateVisualizationsForFrame(frame, frameIndex);
+    }
+    
+    updateVisualizationsForFrame(frame, frameIndex) {
+        if (!frame) {
+            Logger.log(CONFIG.DEBUG.ERROR, 'Playback', 'No frame data provided');
+            return;
+        }
+        
+        app.visualizer.updateHeatmap({ readings: frame.pressure, cop: frame.cop });
+        app.visualizer.updateCoPGraph();
+        app.visualizer.updateVelocityGraph();
+        app.visualizer.updateForceGraph();
+        
+        this.updatePressureDistribution(frame);
+        this.updateRawDataDisplay(frame);
+    }
+    
+    togglePlay() {
+        if (this.isPlaying) {
+            this.stopPlayback();
+        } else {
+            this.playForward();
+        }
+    }
+    
+    playForward() {
+        if (this.isPlaying) return;
+        this.isPlaying = true;
+        document.getElementById('playPause').textContent = '⏸';
+        this.startPlayback(1);
+    }
+    
+    playReverse() {
+        if (this.isPlaying) return;
+        this.isPlaying = true;
+        document.getElementById('playPause').textContent = '⏸';
+        this.startPlayback(-1);
+    }
+    
+    startPlayback(direction) {
+        const frameLength = this.state.recording.playbackData.length;
+        const startTime = this.state.recording.playbackData[0].timestamp;
+        const endTime = this.state.recording.playbackData[frameLength - 1].timestamp;
+        const timePerFrameMs = (endTime - startTime) / frameLength;
+        
+        this.playbackInterval = setInterval(() => {
+            if (direction === 1) {
+                this.currentFrameIndex++;
+                if (this.currentFrameIndex >= this.state.recording.playbackData.length) {
+                    this.stopPlayback();
+                    return;
+                }
+            } else {
+                this.currentFrameIndex--;
+                if (this.currentFrameIndex < 0) {
+                    this.stopPlayback();
+                    return;
+                }
+            }
+            this.showFrame(this.currentFrameIndex);
+        }, timePerFrameMs / this.state.settings.playbackSpeed);
+    }
+    
+    stopPlayback() {
+        if (this.playbackInterval) {
+            clearInterval(this.playbackInterval);
+            this.playbackInterval = null;
+        }
+        this.isPlaying = false;
+        document.getElementById('playPause').textContent = '⏯';
+    }
+    
+    showNextFrame() {
+        this.stopPlayback();
+        if (this.currentFrameIndex < this.state.recording.playbackData.length - 1) {
+            this.showFrame(++this.currentFrameIndex);
+        }
+    }
+    
+    showPrevFrame() {
+        this.stopPlayback();
+        if (this.currentFrameIndex > 0) {
+            this.showFrame(--this.currentFrameIndex);
+        }
+    }
+    
+    skipToFrame(index) {
+        this.stopPlayback();
+        if (index === -1) index = this.state.recording.playbackData.length - 1;
+        this.currentFrameIndex = index;
+        this.showFrame(this.currentFrameIndex);
+    }
+}
 
-
-
-document.addEventListener("DOMContentLoaded", () => {
-    const settingsToggle = document.getElementById("settingsToggle");
-    const settingsSection = document.getElementById("settingsSection");
-    const matSettingsToggle = document.getElementById("matSettingsToggle");
-    const matSettingsSection = document.getElementById("matSettingsSection");
+// Main Application Class
+class PressureSensorApp {
+    constructor() {
+        this.state = new AppState();
+      
+        // Add reference to app in state for components to access
+        this.state.app = this;
+      
+        this.dataProcessor = new DataProcessor(this.state);
+        this.visualizer = new Visualizer(this.state);
+        this.bluetooth = new BluetoothManager(this.state);
+        this.recordingManager = new RecordingManager(this.state);
+        this.playbackManager = new PlaybackManager(this.state);
+      
+        // Set debug level to see all messages
+        CONFIG.DEBUG.level = CONFIG.DEBUG.BASIC;
+        
+        this.initialize();
+    }
+    
+    async initialize() {
+        try {
+            this.setupEventListeners();
+            this.setupSettingsPanel();
+            this.checkVisualizationStatus();
+            Logger.log(CONFIG.DEBUG.BASIC, 'App', 'Application initialized successfully');
+        } catch (error) {
+            Logger.log(CONFIG.DEBUG.ERROR, 'App', 'Initialization failed', error);
+        }
+    }
   
-    const debugInformationToggle = document.getElementById("debugInformationToggle");
-    const debugInformationSection = document.getElementById("connection-info");
+    checkVisualizationStatus() {
+        Logger.log(CONFIG.DEBUG.BASIC, 'App', 'Checking visualization status');
 
-    // Hide sections by default
-    settingsSection.style.display = "none";
-    matSettingsSection.style.display = "none";
-    debugInformationSection.style.display = "none";
+        const heatmapContainer = document.getElementById('heatmap-container');
+        const heatmapElement = document.getElementById('heatmap');
+        const heatmapOverlay = document.getElementById('heatmap-overlay');
 
-    // Add event listeners to toggle visibility
-    settingsToggle.addEventListener("change", () => {
-        settingsSection.style.display = settingsToggle.checked ? "block" : "none";
-    });
+        Logger.log(CONFIG.DEBUG.BASIC, 'App', 'Container dimensions:', {
+            width: heatmapContainer?.offsetWidth,
+            height: heatmapContainer?.offsetHeight
+        });
 
-    matSettingsToggle.addEventListener("change", () => {
-        matSettingsSection.style.display = matSettingsToggle.checked ? "block" : "none";
-    });
-  
-    debugInformationToggle.addEventListener("change", () => {
-        debugInformationSection.style.display = debugInformationToggle.checked ? "block" : "none";
-    });
-  
+        Logger.log(CONFIG.DEBUG.BASIC, 'App', 'Heatmap instance:', {
+            exists: !!this.state.visualization.heatmapInstance,
+            containerExists: !!heatmapElement,
+            overlayExists: !!heatmapOverlay
+        });
+    }
+    
+    setupEventListeners() {
+        document.getElementById('scanButton').addEventListener('click', () => 
+            this.bluetooth.scanForDevices()
+        );
+        
+        document.getElementById('disconnectButton').addEventListener('click', () => 
+            this.bluetooth.disconnect()
+        );
+        
+        document.getElementById('readyButton').addEventListener('click', () => 
+            this.recordingManager.startCountdown()
+        );
+        
+        window.addEventListener('resize', Utils.debounce(() => {
+            this.visualizer.adjustContainerDimensions();
+            this.visualizer.updateHeatmap(this.state.visualization.dataHistory);
+        }, 250));
+    }
+    
+    setupSettingsPanel() {
+        // Initialize settings toggle visibility
+        document.getElementById('settingsSection').style.display = 'none';
+        document.getElementById('matSettingsSection').style.display = 'none';
+        document.getElementById('connection-info').style.display = 'none';
+        
+        // Add toggle event listeners
+        document.getElementById('settingsToggle').addEventListener('change', (e) => {
+            document.getElementById('settingsSection').style.display = 
+                e.target.checked ? 'block' : 'none';
+        });
+        
+        document.getElementById('matSettingsToggle').addEventListener('change', (e) => {
+            document.getElementById('matSettingsSection').style.display = 
+                e.target.checked ? 'block' : 'none';
+        });
+        
+        document.getElementById('debugInformationToggle').addEventListener('change', (e) => {
+            document.getElementById('connection-info').style.display = 
+                e.target.checked ? 'block' : 'none';
+        });
+    }
+    
+    processFrame(frame) {
+        const processedData = this.dataProcessor.processFrame(frame);
+        if (processedData) {
+            this.visualizer.updateHeatmap(processedData);
+            
+            if (this.state.recording.isRecording) {
+                this.recordingManager.processCoPData(
+                    processedData.readings,
+                    processedData.cop
+                );
+            }
+        }
+    }
+	
+}
+
+// Initialize application when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    window.app = new PressureSensorApp();
 });
 
-//Add a window resize handler for the ensuring container and canvas both width and height are exact multiples of sensor count
-window.addEventListener('resize', debounce(() => {
-    adjustContainerDimensions();
-    updateHeatmapWithHistory();
-}, 250));
-
-
-//end of code
