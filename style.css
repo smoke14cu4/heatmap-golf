@@ -210,14 +210,7 @@ input:checked + .slider:before {
     width: 100%;
 }
 
-.heatmap-wrapper {  
-    /* You may need to fine-tune the initial container size in your CSS to ensure it starts with dimensions that work well with your sensor counts. For example: */
-        /* For sensorsX = 23, this would give you 920px width (23 * 40px per sensor) */
-    /* max-width: 920px; */
-        /* For sensorsY = 11, this would give you 440px height (11 * 40px per sensor) */
-    /* height: 440px; */
-        /* Center the container if needed */
-    /* margin: 0 auto; */  
+.heatmap-wrapper {      
     width: 100%;
     height: 400px;
     position: relative;
@@ -245,25 +238,6 @@ input:checked + .slider:before {
     pointer-events: none;
     z-index: 2;
 }
-
-
-
-/* CoP Mode Toggle */
-/*
-.cop-mode-toggle {
-    text-align: center;
-    margin-bottom: 2px;
-}
-
-.cop-mode-toggle label {
-    display: inline-block;
-    padding: 2px 4px;
-    background-color: #f0f0f0;
-    border: 1px solid #cccccc;
-    cursor: pointer;
-}
-*/
-
 /* Update the CoP Mode Toggle styles */
 .cop-mode-toggle {
     position: absolute;
