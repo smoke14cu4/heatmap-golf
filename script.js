@@ -5,6 +5,10 @@
  * Last Updated: 2025-04-15
  */
 
+
+let useLinearFit = true;  //set to true to use linear fit for weight calcs  //set to false to use power fit
+
+
 // Configuration
 const CONFIG = {
   
@@ -38,22 +42,22 @@ const CONFIG = {
     DEFAULTS: {
         clearTime: 5000,
         historyLength: 1,
-        radius: 80,
-        blur: 0.95,
-        maxOpacity: 0.8,
-        minOpacity: 0.02,
+        radius: 80,          // Increased from 40 to create larger, more blended points
+        blur: 0.95,          // Adjusted for better blending
+        maxOpacity: 0.8,      // Increased for better visibility
+        minOpacity: 0.02,    // Increased to keep points visible longer  
         maxValue: 2000,
         minValue: 200,
-        copHistoryLength: 60,
-        matWidth: 46,
-        matHeight: 22,
-        sensorsX: 23,
-        sensorsY: 11,
+        copHistoryLength: 60,  //60 is good for controller fps of 30, so it's 2 seconds of CoP history
+        matWidth: 46,          // inches
+        matHeight: 22,          // inches
+        sensorsX: 23,            // number of sensors in X direction
+        sensorsY: 11,            // number of sensors in Y direction
         invertX: true,
         invertY: false,
-        copTriggerThreshold: 0.2,
-        swingDuration: 3.0,
-        stopTriggerThreshold: 0.3,
+        copTriggerThreshold: 0.2,  //0.1 was not quite enough to prevent false triggers //0.2 seemed pretty good  // inches - minimum movement to start recording  //0.5 was too much (started recording late)  //try 0.1
+        swingDuration: 3.0,        // seconds
+        stopTriggerThreshold: 0.3,  // inches - minimum movement to stop recording
         playbackSpeed: 1.0,
         useFixedDurationStop: true,
         useMovementThresholdStop: false
@@ -253,7 +257,7 @@ class DataProcessor {
 
                 // Process CoP data if recording
                 if (this.state.recording.isRecording) {
-                    this.processCoPData(readings, cop, timestamp);
+                    this.processCoPData(readings, cop, timestamp);                    
                 }
 
                 Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated histories', {
@@ -481,8 +485,10 @@ class DataProcessor {
     }
     
     calculateForces(readings) {
-        const method = document.querySelector('input[name="weightDistMethod"]:checked').value;
-        const useLinearFit = true; // Could be made configurable
+        //const method = document.querySelector('input[name="weightDistMethod"]:checked').value;
+        const method = this.state.app.state.weightDistMethod || 'perFrame';
+      
+        //moved to global //const useLinearFit = true; // Could be made configurable
         
         let totalPressure = 0;
         let leftPressure = 0;
@@ -557,6 +563,7 @@ class Visualizer {
         // --- PATCH: Add throttling variables for chart updates ---
         this.lastVelocityUpdate = 0;
         this.lastForceUpdate = 0;
+        this.coPGraphInitialized = false;
         this.velocityGraphInitialized = false;
         this.forceGraphInitialized = false;
         // --------------------------------------------------------        
@@ -570,37 +577,6 @@ class Visualizer {
         }
       
     }
-    
-    /*
-    initializeHeatmap() {
-        this.adjustContainerDimensions();
-        
-        this.state.visualization.heatmapInstance = h337.create({
-            container: document.getElementById('heatmap'),
-            radius: this.state.settings.radius,
-            maxOpacity: this.state.settings.maxOpacity,
-            minOpacity: this.state.settings.minOpacity,
-            blur: this.state.settings.blur,
-            backgroundColor: 'rgba(0, 0, 58, 0.96)',
-            gradient: {
-                '0.0': 'rgb(0, 0, 58)',
-                '0.1': 'rgb(0, 0, 255)',
-                '0.2': 'rgb(128, 0, 255)',
-                '0.3': 'rgb(0, 128, 255)',
-                '0.4': 'rgb(0, 255, 255)',
-                '0.5': 'rgb(0, 255, 128)',
-                '0.6': 'rgb(0, 255, 0)',
-                '0.7': 'rgb(128, 255, 0)',
-                '0.8': 'rgb(255, 255, 0)',
-                '0.9': 'rgb(255, 128, 0)',
-                '1.0': 'rgb(255, 0, 0)'
-            }
-        });
-        
-        Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Heatmap initialized');
-    }
-    */
-  
   
     initializeHeatmap() {
         const container = document.getElementById('heatmap-container');
@@ -624,19 +600,19 @@ class Visualizer {
                 maxOpacity: this.state.settings.maxOpacity,
                 minOpacity: this.state.settings.minOpacity,
                 blur: this.state.settings.blur,
-                backgroundColor: 'rgba(0, 0, 58, 0.96)',
+                backgroundColor: 'rgba(0, 0, 58, 0.96)',    //blue  //with alpha so you can see through it  //higher alpha is less transparent
                 gradient: {
-                    '0.0': 'rgb(0, 0, 58)',
-                    '0.1': 'rgb(0, 0, 255)',
-                    '0.2': 'rgb(128, 0, 255)',
-                    '0.3': 'rgb(0, 128, 255)',
-                    '0.4': 'rgb(0, 255, 255)',
-                    '0.5': 'rgb(0, 255, 128)',
-                    '0.6': 'rgb(0, 255, 0)',
-                    '0.7': 'rgb(128, 255, 0)',
-                    '0.8': 'rgb(255, 255, 0)',
-                    '0.9': 'rgb(255, 128, 0)',
-                    '1.0': 'rgb(255, 0, 0)'
+                    '0.0': 'rgb(0, 0, 58)',     //blackish blue
+                    '0.1': 'rgb(0, 0, 255)',    //blue
+                    '0.2': 'rgb(128, 0, 255)',  //purple
+                    '0.3': 'rgb(0, 128, 255)',  //greenish blue
+                    '0.4': 'rgb(0, 255, 255)',  //aqua
+                    '0.5': 'rgb(0, 255, 128)',  //blueish green
+                    '0.6': 'rgb(0, 255, 0)',    //green
+                    '0.7': 'rgb(128, 255, 0)',  //yellowish green
+                    '0.8': 'rgb(255, 255, 0)',  //yellow
+                    '0.9': 'rgb(255, 128, 0)',  //orange
+                    '1.0': 'rgb(255, 0, 0)'     //red
                 }
             });
             
@@ -645,11 +621,8 @@ class Visualizer {
             Logger.log(CONFIG.DEBUG.ERROR, 'Visualizer', 'Error creating heatmap instance:', error);
             throw error;
         }
-    }
+    }  
   
-  
-  
-    
     initializeGraphs() {        
         // Initialize CoP Graph (no throttling, usually cheap)
         const copLayout = {
@@ -673,8 +646,9 @@ class Visualizer {
             showlegend: false
         };
         
-        Plotly.newPlot('cop-graph', [], copLayout);
-        
+        Plotly.newPlot('cop-graph', [], copLayout);        
+        this.coPGraphInitialized = true;
+                
         // Initialize Velocity Graph
         const velocityLayout = {
             title: 'CoP Velocity Components',
@@ -905,7 +879,9 @@ class Visualizer {
         const inchesPerSensorY = this.state.settings.matHeight / this.state.settings.sensorsY;
         
         let xValues, yValues, title, xAxisTitle, yAxisTitle;
-        const copMode = document.querySelector('input[name="copMode"]:checked').value;
+      
+        //const copMode = document.querySelector('input[name="copMode"]:checked').value;
+        const copMode = this.state.app.state.copMode || 'normal';
         
         // Adjust coordinates based on mode
         if (copMode === 'normal') {
@@ -955,7 +931,16 @@ class Visualizer {
             }
         };
         
-        Plotly.newPlot('cop-graph', [trace], layout);
+        //Plotly.newPlot('cop-graph', [trace], layout);
+        
+        if (this.coPGraphInitialized) {
+            Plotly.react('cop-graph', [trace], layout);
+        } else {
+            Plotly.newPlot('cop-graph', [trace], layout);
+            this.coPGraphInitialized = true;
+        }
+      
+      
     }
     
     updateVelocityGraph() {
@@ -1041,7 +1026,7 @@ class Visualizer {
         const referenceForce = this.state.recording.staticForceReference || 
                              forceHistory[0].total;
         
-        const useLinearFit = true; // Could be made configurable
+        //moved to global //const useLinearFit = true; // Could be made configurable
         
         let leftForces, rightForces, totalForces;
         
@@ -1337,12 +1322,6 @@ class BluetoothManager {
                 this.state.app.visualizer.clearAll();
                 this.updateUIForConnection(false);
             }
-          
-          
-          
-          
-          
-          
           
         } catch (error) {
             Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Disconnect failed', error);
@@ -1744,8 +1723,9 @@ class PressureSensorApp {
         this.recordingManager = new RecordingManager(this.state);
         this.playbackManager = new PlaybackManager(this.state);
       
-        // Set debug level to see all messages
-        //CONFIG.DEBUG.level = CONFIG.DEBUG.BASIC;
+        this.state.copMode = 'normal'; // Default to normal mode
+        
+        this.state.weightDistMethod = 'perFrame';
         
         this.initialize();
     }
@@ -1753,6 +1733,13 @@ class PressureSensorApp {
     async initialize() {
         try {
             this.setupEventListeners();
+            
+            if (this.state.copMode === 'normal') {
+                document.getElementById('normalMode').checked = true;
+            } else {
+                document.getElementById('deltaMode').checked = true;
+            }
+            
             this.setupSettingsPanel();
             this.checkVisualizationStatus();
             Logger.log(CONFIG.DEBUG.BASIC, 'App', 'Application initialized successfully');
@@ -1789,15 +1776,103 @@ class PressureSensorApp {
             this.bluetooth.disconnect()
         );
         
+        document.getElementById('calibrateStanceButton').addEventListener('click', () => 
+            this.startStanceCalibration()
+        );
+        
         document.getElementById('readyButton').addEventListener('click', () => 
             this.recordingManager.startCountdown()
         );
+      
+        document.getElementById('normalMode').addEventListener('change', () => {
+            this.state.copMode = 'normal';
+            this.visualizer.updateCoPGraph();
+            this.visualizer.updateVelocityGraph();
+            this.visualizer.updateForceGraph();
+        });
+        document.getElementById('deltaMode').addEventListener('change', () => {
+            this.state.copMode = 'delta';
+            this.visualizer.updateCoPGraph();
+            this.visualizer.updateVelocityGraph();
+            this.visualizer.updateForceGraph();
+        });
         
         window.addEventListener('resize', Utils.debounce(() => {
             this.visualizer.adjustContainerDimensions();
             this.visualizer.updateHeatmap(this.state.visualization.dataHistory);
         }, 250));
+      
+        
+        document.getElementsByName('weightDistMethod').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                this.state.weightDistMethod = e.target.value;
+                // Update visualizations to reflect new calibration method
+                // (update force/pressure/CoP/heatmap, etc)
+                this.visualizer.updateCoPGraph();
+                this.visualizer.updateVelocityGraph();
+                this.visualizer.updateForceGraph();
+                // Optional: update heatmap with latest data
+                if (this.state.visualization.dataHistory.length > 0) {
+                    const last = this.state.visualization.dataHistory[this.state.visualization.dataHistory.length - 1];
+                    this.visualizer.updateHeatmap({
+                        readings: last.readings,
+                        cop: this.state.visualization.copHistory.length > 0
+                            ? this.state.visualization.copHistory[this.state.visualization.copHistory.length - 1]
+                            : null
+                    });
+                }
+            });
+        });
+
+      
+        const SETTINGS_SLIDERS = [
+            'clearTime',
+            'radius',
+            'blur',
+            'maxValue',
+            'minValue',
+            'maxOpacity',
+            'minOpacity',
+            'historyLength',
+            'copHistoryLength'
+        ];
+      
+        SETTINGS_SLIDERS.forEach(setting => {
+            const input = document.getElementById(setting);
+            const slider = document.getElementById(setting + 'Slider');
+            if (!input || !slider) return;
+
+            input.addEventListener('input', (e) => {
+                slider.value = e.target.value;
+                this.updateSettingAndVisuals(setting, e.target.value);
+            });
+
+            slider.addEventListener('input', (e) => {
+                input.value = e.target.value;
+                this.updateSettingAndVisuals(setting, e.target.value);
+            });
+        });
+
+        // Mat settings (width, height, sensorsX, sensorsY)
+        ['matWidth', 'matHeight', 'sensorsX', 'sensorsY'].forEach(setting => {
+            const input = document.getElementById(setting);
+            if (!input) return;
+            input.addEventListener('input', (e) => {
+                this.updateSettingAndVisuals(setting, e.target.value);
+            });
+        });
+
+        // Invert axes checkboxes
+        ['invertX', 'invertY'].forEach(setting => {
+            const checkbox = document.getElementById(setting);
+            if (!checkbox) return;
+            checkbox.addEventListener('change', (e) => {
+                this.updateSettingAndVisuals(setting, e.target.checked);
+            });
+        });
+        
     }
+  
     
     setupSettingsPanel() {
         // Initialize settings toggle visibility
@@ -1822,6 +1897,59 @@ class PressureSensorApp {
         });
     }
     
+    
+        
+    updateSettingAndVisuals(setting, value) {
+        // Parse value as number or boolean
+        let parsedValue = value;
+        if (typeof value === 'string' && value !== '' && !isNaN(value)) parsedValue = Number(value);
+
+        this.state.updateSetting(setting, parsedValue);
+
+        // Re-initialize or update visualizations as needed
+        switch (setting) {
+            case 'radius':
+            case 'blur':
+            case 'maxValue':
+            case 'minValue':
+            case 'maxOpacity':
+            case 'minOpacity':
+                this.visualizer.initializeHeatmap();
+                this.visualizer.adjustContainerDimensions();
+                // Fallthrough to update heatmap with history
+            case 'historyLength':
+            case 'copHistoryLength':
+            case 'matWidth':
+            case 'matHeight':
+            case 'sensorsX':
+            case 'sensorsY':
+            case 'invertX':
+            case 'invertY':
+                this.visualizer.adjustContainerDimensions();
+                // Show latest data/history again
+                if (this.state.visualization.dataHistory.length > 0) {
+                    // Use most recent dataHistory frame for update
+                    const last = this.state.visualization.dataHistory[this.state.visualization.dataHistory.length - 1];
+                    this.visualizer.updateHeatmap({
+                        readings: last.readings,
+                        cop: this.state.visualization.copHistory.length > 0
+                            ? this.state.visualization.copHistory[this.state.visualization.copHistory.length - 1]
+                            : null
+                    });
+                }
+                this.visualizer.updateCoPGraph();
+                this.visualizer.updateVelocityGraph();
+                this.visualizer.updateForceGraph();
+                break;
+            case 'clearTime':
+                // No direct visualization update, but could reset timeout if needed
+                break;
+            default:
+                // For any other settings, optionally update heatmap
+                break;
+        }
+    }
+    
     processFrame(frame) {
         const processedData = this.dataProcessor.processFrame(frame);
         if (processedData) {
@@ -1835,8 +1963,38 @@ class PressureSensorApp {
             }
         }
     }
+  
+    startStanceCalibration() {
+        const button = document.getElementById('calibrateStanceButton');
+        const countdownDisplay = document.getElementById('calibrationCountdown');
+        button.disabled = true;
+
+        let timeLeft = CONFIG.CALIBRATION.DURATION / 1000;
+        this.state.calibration.isCalibrating = true;
+        this.state.calibration.data = null; // Reset calibration data
+        this.state.calibration.startTime = Date.now();
+
+        countdownDisplay.textContent = `${timeLeft}s remain - Rock left to right, heel to toe`;
+
+        // Start the countdown interval
+        const countInterval = setInterval(() => {
+            timeLeft = Math.max(
+                0,
+                Math.round((CONFIG.CALIBRATION.DURATION - (Date.now() - this.state.calibration.startTime)) / 1000)
+            );
+            countdownDisplay.textContent = `${timeLeft}s remain - Rock left to right, heel to toe`;
+
+            if (timeLeft <= 0) {
+                clearInterval(countInterval);
+                this.dataProcessor.completeCalibration();
+                countdownDisplay.textContent = '';
+                button.disabled = false;
+            }
+        }, 100);
+    }
 	
-}  //end of class PressureSensorApp {
+}  //end of class PressureSensorApp 
+
 
 // Initialize application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
