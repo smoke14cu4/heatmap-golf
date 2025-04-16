@@ -83,16 +83,22 @@ header {
 }
 
 .left-column {
-    flex: 3 1 0%;
+    /* flex: 3 1 0%; */
+    flex: 2 1 0%;   /* PATCH: reduce left column */
     max-width: 100%;
     min-width: 0;
     gap: var(--spacing-md);
 }
 
 .right-column {
-    flex: 2 1 0%;
-    min-width: 300px;
-    max-width: 500px;
+    /* flex: 2 1 0%; */
+    /* min-width: 300px; */
+    /* max-width: 500px; */
+  
+    flex: 3 1 0%;   /* PATCH: widen right column */
+    min-width: 500px;  /* PATCH: make wider */
+    max-width: 900px;  /* PATCH: make wider */  
+    
     gap: var(--spacing-md);
     overflow-y: auto;
 }
@@ -139,6 +145,20 @@ header {
 .danger-button {
     background-color: var(--danger-color);
     color: white;
+  
+    border: none;
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-size: var(--font-size-normal);
+    transition: background-color var(--transition-speed);
+    appearance: button;
+    outline: none;
+    text-align: center;
+    margin-bottom: var(--spacing-sm);
+    min-width: 180px;
+    display: inline-block;
+  
 }
 
 .danger-button:hover {
@@ -297,6 +317,33 @@ input:checked + .slider:before {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
+.cop-mode-toggle label {
+    display: inline-block;
+    padding: 5px 15px;
+    background-color: #f0f0f0;
+    border: 1px solid #cccccc;
+    cursor: pointer;
+    font-size: 12px;    /* Slightly smaller font size */
+}
+
+.cop-mode-toggle label:first-of-type {
+    border-radius: 4px 0 0 4px;
+}
+
+.cop-mode-toggle label:last-of-type {
+    border-radius: 0 4px 4px 0;
+}
+
+.cop-mode-toggle input[type="radio"] {
+    display: none;
+}
+
+.cop-mode-toggle input[type="radio"]:checked + label {
+    background-color: #4CAF50;
+    color: white;
+    border-color: #4CAF50;
+}
+
 .cop-and-data {
     position: relative;
     display: flex;
@@ -306,6 +353,7 @@ input:checked + .slider:before {
     flex: 1 1 0%;
 }
 
+/* PATCH: Optionally, for parity, you can make the cop-graph wider in left column: */
 #cop-graph {
     flex: 3 1 0%;
     background-color: var(--panel-background);
@@ -314,11 +362,15 @@ input:checked + .slider:before {
     min-width: 0;
     min-height: 280px;
     max-height: 350px;
+  
+    /* width: 100%; */        /* PATCH: stretch full width */
+  
     height: 100%;
     overflow: hidden;
 }
 
 /* Velocity and Force Graphs (now in right column) */
+/* PATCH: Make graph-wrapper graphs stretch full width of right-column */
 .graph-wrapper {
     background-color: var(--panel-background);
     border-radius: var(--border-radius);
@@ -326,19 +378,32 @@ input:checked + .slider:before {
     padding: var(--spacing-sm);
     margin-bottom: var(--spacing-md);
     min-width: 0;
-    min-height: 220px;
-    max-height: 260px;
-    height: 240px;
+    /* min-height: 220px; */
+    /* max-height: 260px; */
+    /* height: 240px; */
+  
+    min-height: 260px;
+    max-height: 320px;
+    height: 280px;
+  
     overflow: hidden;
     flex-shrink: 0;
+  
+    /* PATCH: take full width of parent */
+    width: 100%;
+  
 }
 
 #velocity-graph,
 #force-graph {
     width: 100% !important;
     height: 100% !important;
-    min-height: 180px;
-    max-height: 240px;
+    /* min-height: 180px; */
+    /* max-height: 240px; */
+  
+    min-height: 200px;
+    max-height: 300px;
+  
     display: block;
 }
 
@@ -442,6 +507,12 @@ input:checked + .slider:before {
     border: none;
     border-radius: var(--border-radius);
     cursor: pointer;
+}
+
+.countdown {
+    font-size: 24px;
+    margin: 10px 0;
+    font-weight: bold;
 }
 
 /* Stats Display */
