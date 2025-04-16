@@ -553,6 +553,13 @@ class Visualizer {
     constructor(appState) {
         this.state = appState;
         Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Initializing visualizer');
+        
+        // --- PATCH: Add throttling variables for chart updates ---
+        this.lastVelocityUpdate = 0;
+        this.lastForceUpdate = 0;
+        this.velocityGraphInitialized = false;
+        this.forceGraphInitialized = false;
+        // --------------------------------------------------------        
       
         try{
             this.initializeHeatmap();
@@ -643,8 +650,8 @@ class Visualizer {
   
   
     
-    initializeGraphs() {
-        // Initialize CoP Graph
+    initializeGraphs() {        
+        // Initialize CoP Graph (no throttling, usually cheap)
         const copLayout = {
             title: 'Center of Pressure (CoP) Graph',
             xaxis: {
@@ -685,6 +692,7 @@ class Visualizer {
         };
         
         Plotly.newPlot('velocity-graph', [], velocityLayout);
+        this.velocityGraphInitialized = true;
         
         // Initialize Force Graph
         const forceLayout = {
@@ -706,6 +714,7 @@ class Visualizer {
         };
         
         Plotly.newPlot('force-graph', [], forceLayout);
+        this.forceGraphInitialized = true;
         
         Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'All graphs initialized');
     }
@@ -950,6 +959,11 @@ class Visualizer {
     }
     
     updateVelocityGraph() {
+      
+        const now = Date.now();
+        if (now - this.lastVelocityUpdate < 100) return; // update at most every 100ms (10 FPS)
+        this.lastVelocityUpdate = now;
+      
         const velocityHistory = this.state.visualization.velocityHistory;
         //if (velocityHistory.length < 2) return;
         if (!velocityHistory || velocityHistory.length < 2) {
@@ -998,10 +1012,24 @@ class Visualizer {
             showlegend: true
         };
         
-        Plotly.newPlot('velocity-graph', traces, layout);
+        //Plotly.newPlot('velocity-graph', traces, layout);
+        
+        // PATCH: Use Plotly.react for efficient updates
+        if (this.velocityGraphInitialized) {
+            Plotly.react('velocity-graph', traces, layout);
+        } else {
+            Plotly.newPlot('velocity-graph', traces, layout);
+            this.velocityGraphInitialized = true;
+        }
+      
     }
     
     updateForceGraph() {
+        
+        const now = Date.now();
+        if (now - this.lastForceUpdate < 100) return; // update at most every 100ms (10 FPS)
+        this.lastForceUpdate = now;
+        
         const forceHistory = this.state.visualization.forceHistory;
         if (forceHistory.length < 2) return;
         
@@ -1074,7 +1102,16 @@ class Visualizer {
             showlegend: true
         };
         
-        Plotly.newPlot('force-graph', traces, layout);
+        //Plotly.newPlot('force-graph', traces, layout);
+        
+        // PATCH: Use Plotly.react for efficient updates
+        if (this.forceGraphInitialized) {
+            Plotly.react('force-graph', traces, layout);
+        } else {
+            Plotly.newPlot('force-graph', traces, layout);
+            this.forceGraphInitialized = true;
+        }
+        
     }
   
     clearAll() {
