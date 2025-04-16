@@ -9,7 +9,7 @@
     --panel-background: white;
     --border-color: #cccccc;
     --highlight-color: yellow;
-    
+
     /* Dimensions */
     --container-max-width: 1600px;
     --spacing-xs: 2px;
@@ -17,10 +17,10 @@
     --spacing-md: 10px;
     --spacing-lg: 20px;
     --border-radius: 4px;
-    
+
     /* Transitions */
     --transition-speed: 0.4s;
-    
+
     /* Typography */
     --font-family: Arial, sans-serif;
     --font-size-small: 12px;
@@ -43,6 +43,7 @@ body {
     line-height: 1.5;
     margin: 0;
     padding: var(--spacing-lg);
+    overflow-x: hidden;
 }
 
 /* Layout */
@@ -50,6 +51,9 @@ body {
     max-width: var(--container-max-width);
     margin: 0 auto;
     padding: 0 var(--spacing-lg);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
 }
 
 header {
@@ -60,8 +64,37 @@ header {
 /* Main Content Layout */
 .main-content-wrapper {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: var(--spacing-lg);
+    flex: 1 1 0%;
+    min-height: 0;
+    height: 0;
+}
+
+/* Columns */
+.left-column,
+.right-column {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+.left-column {
+    flex: 3 1 0%;
+    max-width: 100%;
+    min-width: 0;
+    gap: var(--spacing-md);
+}
+
+.right-column {
+    flex: 2 1 0%;
+    min-width: 300px;
+    max-width: 500px;
+    gap: var(--spacing-md);
+    overflow-y: auto;
 }
 
 /* Buttons and Controls */
@@ -71,7 +104,9 @@ header {
     margin-bottom: var(--spacing-md);
 }
 
-.primary-button {
+.primary-button,
+.calibrate-button,
+.ready-button {
     background-color: var(--primary-color);
     color: white;
     border: none;
@@ -80,13 +115,23 @@ header {
     cursor: pointer;
     font-size: var(--font-size-normal);
     transition: background-color var(--transition-speed);
+    appearance: button;
+    outline: none;
+    text-align: center;
+    margin-bottom: var(--spacing-sm);
+    min-width: 180px;
+    display: inline-block;
 }
 
-.primary-button:hover {
+.primary-button:hover,
+.calibrate-button:hover,
+.ready-button:hover {
     background-color: color-mix(in srgb, var(--primary-color) 85%, black);
 }
 
-.primary-button:disabled {
+.primary-button:disabled,
+.calibrate-button:disabled,
+.ready-button:disabled {
     background-color: var(--border-color);
     cursor: not-allowed;
 }
@@ -201,18 +246,23 @@ input:checked + .slider:before {
 .visualization-container {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-lg);
+    gap: var(--spacing-md);
     width: 100%;
+    flex: 1 1 0%;
+    min-height: 0;
 }
 
 .heatmap-wrapper {
     width: 100%;
-    height: 400px;
+    height: 350px;
+    min-height: 250px;
+    max-height: 400px;
     position: relative;
     background-color: var(--panel-background);
     border-radius: var(--border-radius);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     overflow: hidden;
+    flex-shrink: 0;
 }
 
 /* Heatmap and Overlay */
@@ -252,23 +302,66 @@ input:checked + .slider:before {
     display: flex;
     flex-direction: row;
     gap: var(--spacing-sm);
+    min-height: 0;
+    flex: 1 1 0%;
 }
 
 #cop-graph {
-    flex: 3;
+    flex: 3 1 0%;
     background-color: var(--panel-background);
     border-radius: var(--border-radius);
     border: 1px solid var(--border-color);
+    min-width: 0;
+    min-height: 280px;
+    max-height: 350px;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* Velocity and Force Graphs (now in right column) */
+.graph-wrapper {
+    background-color: var(--panel-background);
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+    padding: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+    min-width: 0;
+    min-height: 220px;
+    max-height: 260px;
+    height: 240px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+#velocity-graph,
+#force-graph {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 180px;
+    max-height: 240px;
+    display: block;
+}
+
+@media screen and (max-width: 900px) {
+    .main-content-wrapper {
+        flex-direction: column;
+    }
+    .left-column, .right-column {
+        min-width: 0;
+        max-width: 100%;
+        width: 100%;
+        height: auto;
+    }
 }
 
 /* Raw Data Panel */
 .raw-data-panel {
-    flex: 1;
+    flex: 1 1 0%;
     background-color: var(--background-color);
     padding: var(--spacing-md);
     border-radius: var(--border-radius);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    max-height: 400px;
+    max-height: 350px;
     overflow-y: auto;
 }
 
@@ -283,11 +376,47 @@ input:checked + .slider:before {
     padding: var(--spacing-sm);
     background-color: var(--background-color);
     border-radius: var(--border-radius);
-    max-height: 400px;
+    max-height: 300px;
     overflow-y: auto;
     font-family: monospace;
     font-size: var(--font-size-small);
     line-height: 1.5;
+}
+
+
+/* Left vs Right and toe vs heel foot pressure distribution */
+.pressure-title {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.pressure-stats {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 10px;
+}
+
+.foot-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+.front-foot, .back-foot {
+    padding: 5px 10px;
+    /*background-color: rgba(0, 0, 58, 0.8);  */  /* orig generated content */
+    background-color: rgba(211, 211, 211, 0.8);
+    border-radius: 4px;
+    margin: 0 5px;
+}
+
+.toe-reading, .heel-reading {
+    font-size: 0.9em;
+    padding: 3px 8px;    
+    /*background-color: rgba(0, 0, 58, 0.6);  */  /* orig generated content */
+    background-color: rgba(211, 211, 211, 0.6);
+    border-radius: 3px;
 }
 
 /* Playback Controls */
@@ -357,14 +486,15 @@ input:checked + .slider:before {
     }
 
     .left-column {
-        flex: 3;
+        flex: 3 1 0%;
         min-width: 0;
     }
 
     .right-column {
-        flex: 2;
+        flex: 2 1 0%;
         min-width: 300px;
         max-width: 500px;
+        overflow-y: auto;
     }
 }
 
