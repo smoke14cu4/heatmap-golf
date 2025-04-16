@@ -173,14 +173,22 @@
                             <div id="raw-data"></div>
                         </div>
                     </div>
-                    
-                    <!-- Additional Graphs moved to right column -->
+                                        
                     
                 </div>
             </div>
 
             <!-- Right Column - Controls and Data -->
             <div class="right-column">
+              
+                <!-- PATCH: Move force and velocity graphs to the top, force graph first -->
+                <div class="graph-wrapper">
+                    <div id="force-graph"></div>
+                </div>
+                <div class="graph-wrapper">
+                    <div id="velocity-graph"></div>
+                </div>
+              
                 <!-- Weight Distribution Controls -->
                 <div class="weight-distribution-controls">
                     <div class="method-selector">
@@ -279,16 +287,8 @@
                             <span id="yDistance">0.00</span> in
                         </div>
                     </div>
-                </div>
+                </div>                
                 
-                <!-- Velocity and Force Graphs (moved here) -->
-                <div class="graph-wrapper">
-                    <div id="velocity-graph"></div>
-                </div>
-                <div class="graph-wrapper">
-                    <div id="force-graph"></div>
-                </div>
-
                 <!-- Debug Panel -->
                 <div class="debug-panel">
                     <div class="toggle-container">
