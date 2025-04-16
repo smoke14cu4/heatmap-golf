@@ -907,7 +907,8 @@ class Visualizer {
             x: xValues,
             y: yValues,
             mode: 'lines+markers',
-            type: 'scatter',
+            //type: 'scatter',
+            type: 'scattergl',  //uses WebGL to use GPU for higher performance
             marker: { color: 'blue', size: 6 }
         };
         
@@ -966,7 +967,9 @@ class Visualizer {
                 x: times,
                 y: velocityHistory.map(point => point.vx),
                 mode: 'lines+markers',
-                name: 'Lateral Velocity',
+                type: 'scattergl',  //uses WebGL to use GPU for higher performance
+                //name: 'Lateral Velocity',
+                name: 'Lateral',
                 line: { color: 'blue' },
                 marker: { size: 6, color: 'blue' }
             },
@@ -974,7 +977,9 @@ class Visualizer {
                 x: times,
                 y: velocityHistory.map(point => point.vy),
                 mode: 'lines+markers',
-                name: 'Heel-Toe Velocity',
+                type: 'scattergl',  //uses WebGL to use GPU for higher performance
+                //name: 'Heel-Toe Velocity',
+                name: 'Heel-Toe',
                 line: { color: 'red' },
                 marker: { size: 6, color: 'red' }
             }
@@ -1045,7 +1050,9 @@ class Visualizer {
                 x: times,
                 y: leftForces,
                 mode: 'lines+markers',
-                name: 'Left Foot Force',
+                type: 'scattergl',  //uses WebGL to use GPU for higher performance
+                //name: 'Left Foot Force',
+                name: 'Left',
                 line: { color: 'blue' },
                 marker: { size: 6, color: 'blue' }
             },
@@ -1053,7 +1060,9 @@ class Visualizer {
                 x: times,
                 y: rightForces,
                 mode: 'lines+markers',
-                name: 'Right Foot Force',
+                type: 'scattergl',  //uses WebGL to use GPU for higher performance
+                //name: 'Right Foot Force',
+                name: 'Right',
                 line: { color: 'red' },
                 marker: { size: 6, color: 'red' }
             },
@@ -1061,7 +1070,9 @@ class Visualizer {
                 x: times,
                 y: totalForces,
                 mode: 'lines+markers',
-                name: 'Total Force',
+                type: 'scattergl',  //uses WebGL to use GPU for higher performance
+                //name: 'Total Force',
+                name: 'Total',
                 line: { color: 'green' },
                 marker: { size: 6, color: 'green' }
             }
