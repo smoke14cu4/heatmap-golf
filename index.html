@@ -173,10 +173,9 @@
                             <div id="raw-data"></div>
                         </div>
                     </div>
-
-                    <!-- Additional Graphs -->
-                    <div id="velocity-graph"></div>
-                    <div id="force-graph"></div>
+                    
+                    <!-- Additional Graphs moved to right column -->
+                    
                 </div>
             </div>
 
@@ -190,7 +189,8 @@
                         <input type="radio" id="calibratedMethod" name="weightDistMethod" value="calibrated">
                         <label for="calibratedMethod">Stance-Calibrated Method</label>
                     </div>
-                    <button id="calibrateStanceButton" class="calibrate-button">
+                    <!--<button id="calibrateStanceButton" class="calibrate-button">-->
+                    <button id="calibrateStanceButton" class="calibrate-button primary-button">
                         Calibrate Stance Position - 8s Recording
                     </button>
                     <div id="calibrationCountdown" class="countdown"></div>
@@ -243,7 +243,8 @@
 
                 <!-- CoP Controls -->
                 <div class="cop-controls">
-                    <button id="readyButton" class="ready-button">
+                    <!--<button id="readyButton" class="ready-button">-->
+                    <button id="readyButton" class="ready-button primary-button">
                         Ready to Start Swing - 5s Countdown
                     </button>
                     <div id="countdown" class="countdown"></div>
@@ -278,6 +279,14 @@
                             <span id="yDistance">0.00</span> in
                         </div>
                     </div>
+                </div>
+                
+                <!-- Velocity and Force Graphs (moved here) -->
+                <div class="graph-wrapper">
+                    <div id="velocity-graph"></div>
+                </div>
+                <div class="graph-wrapper">
+                    <div id="force-graph"></div>
                 </div>
 
                 <!-- Debug Panel -->
