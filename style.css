@@ -51,7 +51,7 @@ body {
     max-width: var(--container-max-width);
     margin: 0 auto;
     padding: 0 var(--spacing-lg);
-    height: 100vh;
+    /* height: 100vh; */  /* PATCH: Remove this line to allow full-page scroll */
     display: flex;
     flex-direction: column;
 }
@@ -67,8 +67,8 @@ header {
     flex-direction: row;
     gap: var(--spacing-lg);
     flex: 1 1 0%;
-    min-height: 0;
-    height: 0;
+    /* min-height: 0; */
+    /* height: 0; */
 }
 
 /* Columns */
@@ -77,18 +77,22 @@ header {
     display: flex;
     flex-direction: column;
     min-width: 0;
-    min-height: 0;
-    height: 100%;
+    /* min-height: 0; */
+    /* height: 100%; */
     overflow: hidden;
 }
 
 .left-column {
     /* flex: 3 1 0%; */
     flex: 2 1 0%;   /* PATCH: reduce left column */
-    max-width: 100%;
+    /* max-width: 100%; */
     min-width: 0;
     gap: var(--spacing-md);
 }
+
+
+/* PATCH: Prevent right-column from scrolling separately, so only whole-page scrolls */
+/* Remove or adjust overflow-y: auto; from .right-column and related wrappers */
 
 .right-column {
     /* flex: 2 1 0%; */
@@ -100,7 +104,7 @@ header {
     max-width: 900px;  /* PATCH: make wider */  
     
     gap: var(--spacing-md);
-    overflow-y: auto;
+    /* overflow-y: auto; */
 }
 
 /* Buttons and Controls */
