@@ -2,11 +2,12 @@
  * Pressure Sensor Visualization Application
  * Version: 2.0.0
  * Author: smoke14cu4
- * Last Updated: 2025-04-15
+ * Last Updated: 04-18-2025 
  */
 
 
-let useLinearFit = true;  //set to true to use linear fit for weight calcs  //set to false to use power fit
+//let useLinearFit = true;  //set to true to use linear fit for weight calcs  //set to false to use power fit
+var useLinearFit = true;  //set to true to use linear fit for weight calcs  //set to false to use power fit
 
 
 // Configuration
@@ -623,8 +624,6 @@ class Visualizer {
         }
     }  
   
-  
-  
     // Utility to create overlay layouts with titles and legend inside the plot area
     getOverlayLayout(titleText, xTitle, yTitle, showLegend = true) {
         return {
@@ -691,8 +690,7 @@ class Visualizer {
             paper_bgcolor: 'rgba(0,0,0,0)',
             autosize: true
         };
-    }
-  
+    }  
   
     initializeGraphs() {        
         
@@ -990,6 +988,62 @@ class Visualizer {
         ctx.arc(xScaled, yScaled, 4, 0, Math.PI * 2);
         ctx.fill();
     }
+  
+    formatTimeWithMillis(timestamp) {
+        const date = new Date(timestamp);
+        let hours = date.getHours();
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        const millis = String(date.getMilliseconds()).padStart(3, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        if (hours === 0) hours = 12; // hour '0' should be '12'
+        return `${hours}:${minutes}:${seconds}.${millis} ${ampm}`;
+    }
+  
+    updateRawDataLive(readings, cop, timestamp, settings) {
+        const rawData = document.getElementById('raw-data');
+        if (!rawData) return;
+
+        //const timeString = new Date(timestamp).toLocaleTimeString();        
+        const timeString = this.formatTimeWithMillis(timestamp);
+
+        // Adjust readings according to inversion settings
+        const adjustedReadings = readings.map(reading => ({
+            adjustedX: settings.invertX ? (settings.sensorsX - reading.x) : reading.x,
+            adjustedY: settings.invertY ? (settings.sensorsY - reading.y) : reading.y,
+            adjustedPressure: reading.value
+        }));
+
+        // Adjust CoP if present
+        let copHtml = "";
+        if (cop) {
+            let adjustedCoPx = settings.invertX ? (settings.sensorsX - cop.x) : cop.x;
+            let adjustedCoPy = settings.invertY ? (settings.sensorsY - cop.y) : cop.y;
+            copHtml = `<div>CoP: x=${adjustedCoPx.toFixed(2)}, y=${adjustedCoPy.toFixed(2)}</div>`;
+        }
+
+        // Compose readings HTML
+        let readingsHtml = adjustedReadings.map(r =>
+            `<div>x: ${r.adjustedX}, y: ${r.adjustedY}, pressure: ${r.adjustedPressure}</div>`
+        ).join("");
+
+        /*
+        rawData.innerHTML = `
+            <div>[${timeString}] Latest readings:</div>
+            ${readingsHtml}
+            ${copHtml}
+        `;
+        */
+      
+        rawData.innerHTML = `            
+            <div>[${timeString}]</div>
+            <div>Latest active sensors (${readings.length}):</div>
+            ${readingsHtml}
+            ${copHtml}
+        `;
+      
+    }
     
     updateCoPGraph() {
         const copHistory = this.state.visualization.copHistory;
@@ -1269,6 +1323,86 @@ class Visualizer {
             this.forceGraphInitialized = true;
         }
         
+    }
+    
+    
+    // Add or replace in your Visualizer class:
+    updatePressureDistributionLive(readings, cop, settings, dataProcessor) {
+        if (!readings || readings.length === 0) return;
+
+        // 1. Use DataProcessor's force calculation for left/right totals
+        const forces = dataProcessor.calculateForces(readings);
+
+        const total = forces.total;
+        const left = forces.left;
+        const right = forces.right;
+        if (total === 0) return;
+
+        // 2. Adjust readings for inversion for further splitting
+        const adjustedReadings = readings.map(r => ({
+            ...r,
+            x: settings.invertX ? (settings.sensorsX - r.x) : r.x,
+            y: settings.invertY ? (settings.sensorsY - r.y) : r.y,
+            value: r.value
+        }));
+
+        // 3. Determine left/right split
+        let leftFoot, rightFoot;
+        if (settings.weightDistMethod === "calibrated" && dataProcessor.state.calibration.data) {
+            // Use calibrated x boundary
+            const xMid = dataProcessor.state.calibration.data.xRange.mid;
+            leftFoot = adjustedReadings.filter(r => r.x <= xMid);
+            rightFoot = adjustedReadings.filter(r => r.x > xMid);
+        } else {
+            // Per-frame: split at x midpoint
+            const xVals = adjustedReadings.map(r => r.x);
+            const xMid = Math.min(...xVals) + (Math.max(...xVals) - Math.min(...xVals)) / 2;
+            leftFoot = adjustedReadings.filter(r => r.x <= xMid);
+            rightFoot = adjustedReadings.filter(r => r.x > xMid);
+        }
+
+        // 4. Value function: linear or power fit
+        const useLinearFit = (typeof window.useLinearFit !== "undefined" ? window.useLinearFit : true);
+        const valueFunc = useLinearFit
+            ? (r) => r.value
+            : (r) => Math.pow(
+                (r.value / (settings.POWER_FIT_COEFFICIENT || 1390.2)),
+                1 / (settings.POWER_FIT_EXPONENT || 0.1549)
+            );
+
+        // 5. Y midpoint for toe/heel split (per foot)
+        function toeHeelPerc(footReadings) {
+            if (!footReadings.length) return { toe: 0, heel: 0 };
+            const yVals = footReadings.map(r => r.y);
+            const yMid = Math.min(...yVals) + (Math.max(...yVals) - Math.min(...yVals)) / 2;
+            const toe = footReadings.filter(r => r.y > yMid);
+            const heel = footReadings.filter(r => r.y <= yMid);
+            const toeSum = toe.reduce((sum, r) => sum + valueFunc(r), 0);
+            const heelSum = heel.reduce((sum, r) => sum + valueFunc(r), 0);
+            const footTotal = footReadings.reduce((sum, r) => sum + valueFunc(r), 0);
+            return {
+                toe: footTotal ? ((toeSum / footTotal) * 100).toFixed(1) : "0.0",
+                heel: footTotal ? ((heelSum / footTotal) * 100).toFixed(1) : "0.0"
+            };
+        }
+
+        const leftTotal = leftFoot.reduce((sum, r) => sum + valueFunc(r), 0);
+        const rightTotal = rightFoot.reduce((sum, r) => sum + valueFunc(r), 0);
+
+        const leftPercent = total ? ((leftTotal / total) * 100).toFixed(1) : "0.0";
+        const rightPercent = total ? ((rightTotal / total) * 100).toFixed(1) : "0.0";
+
+        document.getElementById('front-percentage').textContent = leftPercent;
+        document.getElementById('back-percentage').textContent = rightPercent;
+
+        // Per-foot toe/heel
+        const leftTH = toeHeelPerc(leftFoot);
+        const rightTH = toeHeelPerc(rightFoot);
+
+        document.getElementById('front-toe-percentage').textContent = `Toe: ${leftTH.toString ? leftTH.toe : leftTH.toe}%`;
+        document.getElementById('front-heel-percentage').textContent = `Heel: ${leftTH.toString ? leftTH.heel : leftTH.heel}%`;
+        document.getElementById('back-toe-percentage').textContent = `Toe: ${rightTH.toString ? rightTH.toe : rightTH.toe}%`;
+        document.getElementById('back-heel-percentage').textContent = `Heel: ${rightTH.toString ? rightTH.heel : rightTH.heel}%`;
     }
   
     clearAll() {
@@ -2084,7 +2218,6 @@ class PressureSensorApp {
         });
         
     }
-  
     
     setupSettingsPanel() {
         // Initialize settings toggle visibility
@@ -2108,8 +2241,6 @@ class PressureSensorApp {
                 e.target.checked ? 'block' : 'none';
         });
     }
-    
-    
         
     updateSettingAndVisuals(setting, value) {
         // Parse value as number or boolean
@@ -2166,6 +2297,20 @@ class PressureSensorApp {
         const processedData = this.dataProcessor.processFrame(frame);
         if (processedData) {
             this.visualizer.updateHeatmap(processedData);
+          
+            this.visualizer.updateRawDataLive(
+                processedData.readings,
+                processedData.cop,
+                processedData.timestamp,
+                this.state.settings
+            );
+          
+            this.visualizer.updatePressureDistributionLive(
+                processedData.readings,
+                processedData.cop,
+                this.state.settings,
+                this.dataProcessor
+            );
             
             if (this.state.recording.isRecording) {
                 this.recordingManager.processCoPData(
