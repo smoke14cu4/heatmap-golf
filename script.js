@@ -623,7 +623,80 @@ class Visualizer {
         }
     }  
   
+  
+  
+    // Utility to create overlay layouts with titles and legend inside the plot area
+    getOverlayLayout(titleText, xTitle, yTitle, showLegend = true) {
+        return {
+            title: '', // Remove default
+            xaxis: { title: '', automargin: false, showgrid: true, zeroline: true },
+            yaxis: { title: '', automargin: false, showgrid: true, zeroline: true },
+            annotations: [
+                {
+                    text: titleText,
+                    x: 0.5,
+                    //y: 1.07,
+                    y: 0.97,
+                    xref: 'paper',
+                    yref: 'paper',
+                    showarrow: false,
+                    //font: { size: 22 },
+                    font: { size: 18 },
+                    xanchor: 'center',
+                    yanchor: 'bottom'
+                },
+                {
+                    text: xTitle,
+                    x: 0.5,
+                    //y: -0.17,
+                    y: 0.05,
+                    xref: 'paper',
+                    yref: 'paper',
+                    showarrow: false,
+                    //font: { size: 16 },
+                    font: { size: 12 },
+                    xanchor: 'center',
+                    yanchor: 'top'
+                },
+                {
+                    text: yTitle,
+                    //x: -0.13,
+                    x: 0.02,
+                    y: 0.5,
+                    xref: 'paper',
+                    yref: 'paper',
+                    showarrow: false,
+                    //font: { size: 16 },
+                    font: { size: 12 },
+                    textangle: -90,
+                    xanchor: 'center',
+                    yanchor: 'middle'
+                }
+            ],
+            legend: showLegend ? {
+                orientation: 'h',
+                x: 0.5,
+                //y: 1.03,
+                y: 0.9,
+                xanchor: 'center',
+                yanchor: 'bottom',
+                bgcolor: 'rgba(255,255,255,0.7)',
+                borderwidth: 0,
+                //font: { size: 13 }
+                font: { size: 9 }
+            } : { visible: false },
+            //margin: { l: 18, r: 8, t: 34, b: 18 },
+            margin: { l: 36, r: 8, t: 18, b: 18 },  //dec top margin   //increased left margin to let 3 digits display
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            autosize: true
+        };
+    }
+  
+  
     initializeGraphs() {        
+        
+        /*
         // Initialize CoP Graph (no throttling, usually cheap)
         const copLayout = {
             title: 'Center of Pressure (CoP) Graph',
@@ -643,12 +716,15 @@ class Visualizer {
                 exponentformat: 'none',
                 showexponent: 'none'
             },
-            showlegend: false
-        };
+            showlegend: false,              
+            autosize: true  // Responsive sizing
+        };        
         
         Plotly.newPlot('cop-graph', [], copLayout);        
         this.coPGraphInitialized = true;
+        */
                 
+        /*
         // Initialize Velocity Graph
         const velocityLayout = {
             title: 'CoP Velocity Components',
@@ -662,12 +738,15 @@ class Visualizer {
                 showgrid: true,
                 zeroline: true
             },
-            showlegend: true
+            showlegend: true,
+            autosize: true  // Responsive sizing
         };
         
         Plotly.newPlot('velocity-graph', [], velocityLayout);
         this.velocityGraphInitialized = true;
-        
+        */
+      
+        /*
         // Initialize Force Graph
         const forceLayout = {
             title: {
@@ -684,11 +763,56 @@ class Visualizer {
                 showgrid: true,
                 zeroline: true
             },
-            showlegend: true
+            showlegend: true,
+            autosize: true  // Responsive sizing
         };
         
         Plotly.newPlot('force-graph', [], forceLayout);
         this.forceGraphInitialized = true;
+        */
+      
+      
+      //using getOverlayLayout to overlay most of graph info including titles and axes labels  
+      
+        // CoP Graph (NO legend)
+        Plotly.newPlot(
+            'cop-graph',
+            [],
+            this.getOverlayLayout(
+                'Center of Pressure (CoP) Graph',
+                'X Position (coordinate)',
+                'Y Position (coordinate)',
+                false // no legend
+            )
+        );
+        this.coPGraphInitialized = true;
+      
+        // Velocity Graph (legend horizontal, overlayed)
+        Plotly.newPlot(
+            'velocity-graph',
+            [],
+            this.getOverlayLayout(
+                'CoP Velocity Components',
+                'Time (s)',
+                'Velocity (in/s)',
+                true
+            )
+        );
+        this.velocityGraphInitialized = true;
+      
+        // Force Graph (legend horizontal, overlayed)
+        Plotly.newPlot(
+            'force-graph',
+            [],
+            this.getOverlayLayout(
+                `Vertical Ground Reaction Force ${window.useLinearFit ? '(Linear)' : '(Power Fit)'}`,
+                'Time (s)',
+                'Force (% of static weight)',
+                true
+            )
+        );
+        this.forceGraphInitialized = true;
+      
         
         Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'All graphs initialized');
     }
@@ -912,6 +1036,7 @@ class Visualizer {
             marker: { color: 'blue', size: 6 }
         };
         
+        /*
         const layout = {
             title: title,
             xaxis: {
@@ -931,6 +1056,12 @@ class Visualizer {
                 showexponent: 'none'
             }
         };
+        */
+      
+      
+        //using getOverlayLayout to overlay most of graph info including titles and axes labels
+        const layout = this.getOverlayLayout(title, xAxisTitle, yAxisTitle, false);
+      
         
         //Plotly.newPlot('cop-graph', [trace], layout);
         
@@ -945,10 +1076,11 @@ class Visualizer {
     }
     
     updateVelocityGraph() {
-      
+        
         const now = Date.now();
         if (now - this.lastVelocityUpdate < 100) return; // update at most every 100ms (10 FPS)
         this.lastVelocityUpdate = now;
+        
       
         const velocityHistory = this.state.visualization.velocityHistory;
         //if (velocityHistory.length < 2) return;
@@ -985,6 +1117,7 @@ class Visualizer {
             }
         ];
         
+        /*
         const layout = {
             title: 'CoP Velocity Components',
             xaxis: {
@@ -1001,6 +1134,19 @@ class Visualizer {
             },
             showlegend: true
         };
+        */
+      
+        
+        //using getOverlayLayout to overlay most of graph info including titles and axes labels
+        const layout = this.getOverlayLayout(
+            'CoP Velocity Components',
+            'Time (s)',
+            'Velocity (in/s)',
+            true
+        );
+        layout.xaxis.autorange = 'reversed';
+        layout.xaxis.range = [-(this.state.settings.copHistoryLength / 30), 0];
+      
         
         //Plotly.newPlot('velocity-graph', traces, layout);
         
@@ -1020,6 +1166,7 @@ class Visualizer {
         if (now - this.lastForceUpdate < 100) return; // update at most every 100ms (10 FPS)
         this.lastForceUpdate = now;
         
+        
         const forceHistory = this.state.visualization.forceHistory;
         if (forceHistory.length < 2) return;
         
@@ -1035,6 +1182,7 @@ class Visualizer {
         
         let leftForces, rightForces, totalForces;
         
+        //if (window.useLinearFit) {
         if (useLinearFit) {
             leftForces = forceHistory.map(point => (point.left / point.total) * 100);
             rightForces = forceHistory.map(point => (point.right / point.total) * 100);
@@ -1078,6 +1226,7 @@ class Visualizer {
             }
         ];
         
+        /*
         const layout = {
             title: {
                 text: `Vertical Ground Reaction Force ${useLinearFit ? '(Linear)' : '(Power Fit)'}`,
@@ -1097,6 +1246,18 @@ class Visualizer {
             },
             showlegend: true
         };
+        */
+      
+        //using getOverlayLayout to overlay most of graph info including titles and axes labels
+        const layout = this.getOverlayLayout(
+            `Vertical Ground Reaction Force ${window.useLinearFit ? '(Linear)' : '(Power Fit)'}`,
+            'Time (s)',
+            'Force (% of static weight)',
+            true
+        );
+        layout.xaxis.autorange = 'reversed';
+        layout.xaxis.range = [-(this.state.settings.copHistoryLength / 30), 0];
+      
         
         //Plotly.newPlot('force-graph', traces, layout);
         
@@ -1122,6 +1283,7 @@ class Visualizer {
         this.state.visualization.velocityHistory = [];
         this.state.visualization.forceHistory = [];
 
+        /*
         // Clear graphs
         Plotly.newPlot('cop-graph', [], {
             title: 'Center of Pressure (CoP) Graph',
@@ -1140,6 +1302,45 @@ class Visualizer {
             xaxis: { title: 'Time (s)' },
             yaxis: { title: 'Force (% of static weight)' }
         });
+        */
+      
+      
+        // Clear graphs - updated for titles and axes titles overlay
+        // CoP Graph (NO legend)
+        Plotly.newPlot(
+            'cop-graph',
+            [],
+            this.getOverlayLayout(
+                'Center of Pressure (CoP) Graph',
+                'X Position (coordinate)',
+                'Y Position (coordinate)',
+                false // no legend
+            )
+        );        
+      
+        // Velocity Graph (legend horizontal, overlayed)
+        Plotly.newPlot(
+            'velocity-graph',
+            [],
+            this.getOverlayLayout(
+                'CoP Velocity Components',
+                'Time (s)',
+                'Velocity (in/s)',
+                true
+            )
+        );        
+      
+        // Force Graph (legend horizontal, overlayed)
+        Plotly.newPlot(
+            'force-graph',
+            [],
+            this.getOverlayLayout(
+                `Vertical Ground Reaction Force ${window.useLinearFit ? '(Linear)' : '(Power Fit)'}`,
+                'Time (s)',
+                'Force (% of static weight)',
+                true
+            )
+        );
 
         // Clear overlay canvas
         const overlayCanvas = document.getElementById('heatmap-overlay');
