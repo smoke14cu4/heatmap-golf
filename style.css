@@ -51,7 +51,6 @@ body {
     max-width: var(--container-max-width);
     margin: 0 auto;
     padding: 0 var(--spacing-lg);
-    /* height: 100vh; */  /* PATCH: Remove this line to allow full-page scroll */
     display: flex;
     flex-direction: column;
 }
@@ -67,8 +66,6 @@ header {
     flex-direction: row;
     gap: var(--spacing-lg);
     flex: 1 1 0%;
-    /* min-height: 0; */
-    /* height: 0; */
 }
 
 /* Columns */
@@ -77,34 +74,23 @@ header {
     display: flex;
     flex-direction: column;
     min-width: 0;
-    /* min-height: 0; */
-    /* height: 100%; */
     overflow: hidden;
 }
 
 .left-column {
-    /* flex: 3 1 0%; */
-    flex: 2 1 0%;   /* PATCH: reduce left column */
-    /* max-width: 100%; */
+    flex: 2 1 0%;
     min-width: 0;
     gap: var(--spacing-md);
 }
-
 
 /* PATCH: Prevent right-column from scrolling separately, so only whole-page scrolls */
 /* Remove or adjust overflow-y: auto; from .right-column and related wrappers */
 
 .right-column {
-    /* flex: 2 1 0%; */
-    /* min-width: 300px; */
-    /* max-width: 500px; */
-  
-    flex: 3 1 0%;   /* PATCH: widen right column */
-    min-width: 500px;  /* PATCH: make wider */
-    max-width: 900px;  /* PATCH: make wider */  
-    
+    flex: 3 1 0%;
+    min-width: 500px;
+    max-width: 900px;
     gap: var(--spacing-md);
-    /* overflow-y: auto; */
 }
 
 /* Buttons and Controls */
@@ -149,7 +135,6 @@ header {
 .danger-button {
     background-color: var(--danger-color);
     color: white;
-  
     border: none;
     padding: var(--spacing-md) var(--spacing-lg);
     border-radius: var(--border-radius);
@@ -162,7 +147,6 @@ header {
     margin-bottom: var(--spacing-sm);
     min-width: 180px;
     display: inline-block;
-  
 }
 
 .danger-button:hover {
@@ -327,7 +311,7 @@ input:checked + .slider:before {
     background-color: #f0f0f0;
     border: 1px solid #cccccc;
     cursor: pointer;
-    font-size: 12px;    /* Slightly smaller font size */
+    font-size: 12px;
 }
 
 .cop-mode-toggle label:first-of-type {
@@ -366,11 +350,11 @@ input:checked + .slider:before {
     min-width: 0;
     min-height: 280px;
     max-height: 350px;
-  
-    /* width: 100%; */        /* PATCH: stretch full width */
-  
     height: 100%;
     overflow: hidden;
+    /* Remove margins and padding for overlayed titles/legend */
+    margin: 0;
+    padding: 0;
 }
 
 /* Velocity and Force Graphs (now in right column) */
@@ -382,33 +366,26 @@ input:checked + .slider:before {
     padding: var(--spacing-sm);
     margin-bottom: var(--spacing-md);
     min-width: 0;
-    /* min-height: 220px; */
-    /* max-height: 260px; */
-    /* height: 240px; */
-  
     min-height: 260px;
     max-height: 320px;
     height: 280px;
-  
     overflow: hidden;
     flex-shrink: 0;
-  
-    /* PATCH: take full width of parent */
     width: 100%;
-  
 }
 
+/* Overlayed Plotly Graphs: Remove margin/padding for max plot area */
 #velocity-graph,
 #force-graph {
     width: 100% !important;
     height: 100% !important;
-    /* min-height: 180px; */
-    /* max-height: 240px; */
-  
     min-height: 200px;
     max-height: 300px;
-  
     display: block;
+    margin: 0;
+    padding: 0;
+    /* Transparent backgrounds for overlayed titles/legend */
+    background: transparent !important;
 }
 
 @media screen and (max-width: 900px) {
@@ -452,7 +429,6 @@ input:checked + .slider:before {
     line-height: 1.5;
 }
 
-
 /* Left vs Right and toe vs heel foot pressure distribution */
 .pressure-title {
     font-weight: bold;
@@ -474,7 +450,6 @@ input:checked + .slider:before {
 
 .front-foot, .back-foot {
     padding: 5px 10px;
-    /*background-color: rgba(0, 0, 58, 0.8);  */  /* orig generated content */
     background-color: rgba(211, 211, 211, 0.8);
     border-radius: 4px;
     margin: 0 5px;
@@ -483,7 +458,6 @@ input:checked + .slider:before {
 .toe-reading, .heel-reading {
     font-size: 0.9em;
     padding: 3px 8px;    
-    /*background-color: rgba(0, 0, 58, 0.6);  */  /* orig generated content */
     background-color: rgba(211, 211, 211, 0.6);
     border-radius: 3px;
 }
