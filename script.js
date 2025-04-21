@@ -2,7 +2,7 @@
  * Pressure Sensor Visualization Application
  * Version: 2.0.0
  * Author: smoke14cu4
- * Last Updated: 04-18-2025 
+ * Last Updated: 04-21-2025 
  */
 
 
@@ -893,10 +893,15 @@ class Visualizer {
         //skip inversion/scaling if playback
         const isPlayback = this.state.isPlayback;
         const processedData = data.readings.map(reading => {
-            let x = reading.x, y = reading.y;
+            let x = reading.x;
+            let y = reading.y;
             if (!isPlayback) {
-                if (this.state.settings.invertX) x = this.state.settings.sensorsX - x;
-                if (!this.state.settings.invertY) y = this.state.settings.sensorsY - y;
+                if (this.state.settings.invertX) {
+                  x = this.state.settings.sensorsX - x;
+                }
+                if (!this.state.settings.invertY) {
+                  y = this.state.settings.sensorsY - y;
+                }
             }
             return {
                 x: x * scaleX,
@@ -993,10 +998,15 @@ class Visualizer {
       
       
         copHistory.forEach((point, index) => {
-            let x = point.x, y = point.y;
+            let x = point.x;
+            let y = point.y;
             if (!isPlayback) {
-                if (this.state.settings.invertX) x = this.state.settings.sensorsX - x;
-                if (!this.state.settings.invertY) y = this.state.settings.sensorsY - y;
+                if (this.state.settings.invertX) {
+                  x = this.state.settings.sensorsX - x;
+                }
+                if (!this.state.settings.invertY) {
+                  y = this.state.settings.sensorsY - y;
+                }
             }
             const xScaled = (x * canvas.width) / this.state.settings.sensorsX;
             const yScaled = (y * canvas.height) / this.state.settings.sensorsY;
@@ -1022,8 +1032,12 @@ class Visualizer {
         */
       
         if (!this.state.isPlayback) {
-            if (this.state.settings.invertX) x = this.state.settings.sensorsX - x;
-            if (!this.state.settings.invertY) y = this.state.settings.sensorsY - y;
+            if (this.state.settings.invertX) {
+              x = this.state.settings.sensorsX - x;
+            }
+            if (!this.state.settings.invertY) {
+              y = this.state.settings.sensorsY - y;
+            }
         }
         
         const xScaled = (x * canvas.width) / this.state.settings.sensorsX;
