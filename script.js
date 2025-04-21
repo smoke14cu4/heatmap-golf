@@ -892,6 +892,7 @@ class Visualizer {
       
         //skip inversion/scaling if playback
         const isPlayback = this.state.isPlayback;
+        console.log("Visualizer.updateHeatmap isPlayback = " + isPlayback);
         const processedData = data.readings.map(reading => {
             let x = reading.x;
             let y = reading.y;
@@ -996,6 +997,7 @@ class Visualizer {
         });
         */
       
+        console.log("Visualizer.drawCoPPath isPlayback = " + isPlayback);
       
         copHistory.forEach((point, index) => {
             let x = point.x;
@@ -1030,6 +1032,8 @@ class Visualizer {
             y = this.state.settings.sensorsY - y;
         }
         */
+      
+        console.log("Visualizer.drawCurrentCoP this.state.isPlayback = " + this.state.isPlayback);
       
         if (!this.state.isPlayback) {
             if (this.state.settings.invertX) {
@@ -1087,6 +1091,8 @@ class Visualizer {
       
       
         const isPlayback = this.state.isPlayback;
+      
+        console.log("Visualizer.updateRawDataLive isPlayback = " + isPlayback);
       
         const adjustedReadings = readings.map(reading => ({
             adjustedX: isPlayback ? reading.x : (settings.invertX ? (settings.sensorsX - reading.x) : reading.x),
@@ -2239,6 +2245,9 @@ class PlaybackManager {
 
         // 1. Prepare playback history arrays for visualizations
         // These arrays are already adjusted for inversion/scaling in recording, so pass as-is.
+        const startTime = this.state.recording.playbackData[0].timestamp;
+        
+        
 
         // Build CoP history up to this frame for CoP path drawing (and velocity)
         const copHistory = this.state.recording.playbackData.slice(0, frameIndex + 1)
@@ -2261,8 +2270,11 @@ class PlaybackManager {
             const curr = copHistory[i];
             const dt = (curr.timestamp - prev.timestamp) / 1000;
             if (dt === 0) continue;
+          
             const inchesPerSensorX = this.state.settings.matWidth / this.state.settings.sensorsX;
             const inchesPerSensorY = this.state.settings.matHeight / this.state.settings.sensorsY;
+                    
+          
             const dx = (curr.x - prev.x) * inchesPerSensorX;
             const dy = (curr.y - prev.y) * inchesPerSensorY;
             velocityHistory.push({
@@ -2302,7 +2314,13 @@ class PlaybackManager {
 
         // 2. Update Visualizer's temporary state for playback
         // (This avoids overwriting live data, and all updates use these arrays)
-        this.state.visualization.dataHistory = dataHistory;
+        //this.state.visualization.dataHistory = dataHistory;
+        
+        this.state.visualization.dataHistory = [{
+            timestamp: frame.timestamp,
+            readings: frame.pressure
+        }];
+        
         this.state.visualization.copHistory = copHistory;
         this.state.visualization.velocityHistory = velocityHistory;
         this.state.visualization.forceHistory = forcesHistory;
@@ -2314,14 +2332,92 @@ class PlaybackManager {
         });
         // Overlay path and dot will use .copHistory
 
+        // Get total duration for x-axis range
+        const totalDuration = (this.state.recording.playbackData[this.state.recording.playbackData.length - 1].timestamp - startTime) / 1000;
+        
+      
         // 4. Update CoP graph
         this.state.app.visualizer.updateCoPGraph();
-
+      
         // 5. Update velocity graph
-        this.state.app.visualizer.updateVelocityGraph();
+        //this.state.app.visualizer.updateVelocityGraph();
+        // Update velocity graph with modified layout
+        const velocityTraces = [
+            {
+                x: velocityHistory.map(point => (point.timestamp - startTime) / 1000),
+                y: velocityHistory.map(point => point.vx),
+                mode: 'lines+markers',
+                type: 'scattergl',
+                name: 'Lateral',
+                line: { color: 'blue' },
+                marker: { size: 6, color: 'blue' }
+            },
+            {
+                x: velocityHistory.map(point => (point.timestamp - startTime) / 1000),
+                y: velocityHistory.map(point => point.vy),
+                mode: 'lines+markers',
+                type: 'scattergl',
+                name: 'Heel-Toe',
+                line: { color: 'red' },
+                marker: { size: 6, color: 'red' }
+            }
+        ];
+
+        const velocityLayout = this.state.app.visualizer.getOverlayLayout(
+            'CoP Velocity Components',
+            'Time (s)',
+            'Velocity (in/s)',
+            true
+        );
+        velocityLayout.xaxis.range = [0, totalDuration];
+
+        Plotly.react('velocity-graph', velocityTraces, velocityLayout);
+
 
         // 6. Update force graph
-        this.state.app.visualizer.updateForceGraph();
+        //this.state.app.visualizer.updateForceGraph();
+        // Update force graph with modified layout
+        const forceTraces = [
+            {
+                x: forcesHistory.map(point => (point.timestamp - startTime) / 1000),
+                y: forcesHistory.map(point => (point.left / point.total) * 100),
+                mode: 'lines+markers',
+                type: 'scattergl',
+                name: 'Left',
+                line: { color: 'blue' },
+                marker: { size: 6, color: 'blue' }
+            },
+            {
+                x: forcesHistory.map(point => (point.timestamp - startTime) / 1000),
+                y: forcesHistory.map(point => (point.right / point.total) * 100),
+                mode: 'lines+markers',
+                type: 'scattergl',
+                name: 'Right',
+                line: { color: 'red' },
+                marker: { size: 6, color: 'red' }
+            },
+            {
+                x: forcesHistory.map(point => (point.timestamp - startTime) / 1000),
+                y: forcesHistory.map(point => (point.total / forcesHistory[0].total) * 100),
+                mode: 'lines+markers',
+                type: 'scattergl',
+                name: 'Total',
+                line: { color: 'green' },
+                marker: { size: 6, color: 'green' }
+            }
+        ];
+
+        const forceLayout = this.state.app.visualizer.getOverlayLayout(
+            `Vertical Ground Reaction Force ${window.useLinearFit ? '(Linear)' : '(Power Fit)'}`,
+            'Time (s)',
+            'Force (% of static weight)',
+            true
+        );
+        forceLayout.xaxis.range = [0, totalDuration];
+
+        Plotly.react('force-graph', forceTraces, forceLayout);
+      
+      
 
         // 7. Update pressure distribution (now with heel/toe splits)
         this.state.app.visualizer.updatePressureDistributionLive(
