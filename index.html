@@ -103,6 +103,54 @@
                         </label>
                         <input type="range" id="copHistoryLengthSlider" min="1" max="200" value="60">
                     </div>
+                  
+
+                    <div class="control-group">
+                        <!-- <label>CoP Trigger Threshold (inches): -->
+                        <label>Start Recording Movement Threshold (inches): 
+                            <input type="number" id="copTriggerThreshold" 
+                                   min="0" max="2" step="0.05" 
+                                   value="0.2">
+                        </label>
+                        <input type="range" id="copTriggerThresholdSlider" 
+                               min="0" max="2" step="0.05" 
+                               value="0.2">
+                    </div>
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="useFixedDurationStop" checked>
+                            Use Fixed Duration Stop
+                        </label>
+                    </div>
+                    <div class="control-group">
+                        <label>Swing Duration (seconds): 
+                            <input type="number" id="swingDuration" 
+                                   min="1" max="10" step="0.5" 
+                                   value="3.0">
+                        </label>
+                        <input type="range" id="swingDurationSlider" 
+                               min="1" max="10" step="0.5" 
+                               value="3.0">
+                    </div>
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="useMovementThresholdStop">
+                            Use Movement Threshold Stop
+                        </label>
+                    </div>
+                    <div class="control-group">
+                        <label>Stop Recording Movement Threshold (inches): 
+                            <input type="number" id="stopTriggerThreshold" 
+                                   min="0.1" max="5" step="0.1" 
+                                   value="0.3">
+                        </label>
+                        <input type="range" id="stopTriggerThresholdSlider" 
+                               min="0.1" max="5" step="0.1" 
+                               value="0.3">
+                    </div>                  
+
+                  
+                  
                 </div>
             </div>
 
