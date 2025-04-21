@@ -258,7 +258,8 @@ class DataProcessor {
 
                 // Process CoP data if recording
                 if (this.state.recording.isRecording) {
-                    this.processCoPData(readings, cop, timestamp);                    
+                    //this.processCoPData(readings, cop, timestamp);
+                    this.recordingManager.processCoPData(readings, cop, timestamp);                  
                 }
 
                 Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated histories', {
