@@ -256,11 +256,12 @@ class DataProcessor {
                 this.updateForceHistory(forces, timestamp);
                 Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated force history');
 
+                //this has moved to PressureSensorApp class
                 // Process CoP data if recording
-                if (this.state.recording.isRecording) {
-                    //this.processCoPData(readings, cop, timestamp);
-                    this.recordingManager.processCoPData(readings, cop, timestamp);                  
-                }
+                //if (this.state.recording.isRecording) {
+                //    //this.processCoPData(readings, cop, timestamp);
+                //    this.recordingManager.processCoPData(readings, cop, timestamp);                  
+                //}
 
                 Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated histories', {
                     dataHistoryLength: this.state.visualization.dataHistory.length,
@@ -269,7 +270,8 @@ class DataProcessor {
                 });
               
                 // Update all visualizations
-                this.updateVisualizations({ readings, cop, forces, timestamp });
+                //moved this call to the processFrame method of the PressureSensorApp class
+                //this.updateVisualizations({ readings, cop, forces, timestamp });
 
                 return { readings, cop, forces, timestamp };
             }
@@ -281,8 +283,6 @@ class DataProcessor {
         return null;
       
       
-      
-        
         // Set clear timeout
         this.state.clearTimeout = setTimeout(() => {
             this.clearData();
@@ -290,27 +290,27 @@ class DataProcessor {
       
     }
   
+    /*
+    //moved this method to the PressureSensorApp class
     updateVisualizations(data) {
         if (this.state.app && this.state.app.visualizer) {
             // Update heatmap
             this.state.app.visualizer.updateHeatmap(data);
-
             // Update CoP graph if we have CoP data
             if (data.cop) {
                 this.state.app.visualizer.updateCoPGraph();
             }
-
             // Update velocity graph if we have velocity history
             if (this.state.visualization.velocityHistory.length > 0) {
                 this.state.app.visualizer.updateVelocityGraph();
             }
-
             // Update force graph if we have force history
             if (this.state.visualization.forceHistory.length > 0) {
                 this.state.app.visualizer.updateForceGraph();
             }
         }
     }
+    */
     
     parsePressureData(data) {
         try {
@@ -1975,7 +1975,7 @@ class PlaybackManager {
             CoP: ${data.cop}
             Active Sensors: ${data.pressurePoints}
         `;
-    }  
+    }
     
     togglePlay() {
         if (this.isPlaying) {
@@ -2296,23 +2296,27 @@ class PressureSensorApp {
     
     processFrame(frame) {
         const processedData = this.dataProcessor.processFrame(frame);
-        if (processedData) {
-            this.visualizer.updateHeatmap(processedData);
-          
+        if (processedData) {            
+            /*
+            //moved these to the updateVisualizations method just below
+            this.visualizer.updateHeatmap(processedData);          
             this.visualizer.updateRawDataLive(
                 processedData.readings,
                 processedData.cop,
                 processedData.timestamp,
                 this.state.settings
-            );
-          
+            );          
             this.visualizer.updatePressureDistributionLive(
                 processedData.readings,
                 processedData.cop,
                 this.state.settings,
                 this.dataProcessor
             );
+            */
+          
+            this.updateVisualizations(processedData);
             
+            // Handle swing recording logic
             if (this.state.recording.isRecording) {
                 this.recordingManager.processCoPData(
                     processedData.readings,
@@ -2320,7 +2324,43 @@ class PressureSensorApp {
                 );
             }
         }
-    }
+    }  
+    
+    updateVisualizations(processedData) {
+        // Update the heatmap
+        this.visualizer.updateHeatmap(processedData);
+
+        // Update raw data panel
+        this.visualizer.updateRawDataLive(
+            processedData.readings,
+            processedData.cop,
+            processedData.timestamp,
+            this.state.settings
+        );
+
+        // Update pressure distribution
+        this.visualizer.updatePressureDistributionLive(
+            processedData.readings,
+            processedData.cop,
+            this.state.settings,
+            this.dataProcessor
+        );
+
+        // Update CoP graph if we have CoP data
+        if (processedData.cop) {
+            this.visualizer.updateCoPGraph();
+        }
+
+        // Update velocity graph if we have velocity history
+        if (this.state.visualization.velocityHistory.length > 0) {
+            this.visualizer.updateVelocityGraph();
+        }
+
+        // Update force graph if we have force history
+        if (this.state.visualization.forceHistory.length > 0) {
+            this.visualizer.updateForceGraph();
+        }
+    }    
   
     startStanceCalibration() {
         const button = document.getElementById('calibrateStanceButton');
