@@ -137,19 +137,8 @@ class Logger {
     static log(level, component, message, data = null) {
         if (level > CONFIG.DEBUG.level) return;
         
-        const timestamp = new Date().toISOString();
-        //const logMessage = `[${timestamp}][${component}] ${message}`;
+        const timestamp = new Date().toISOString();        
         const logBase = `[${timestamp}][${component}] ${message}`;
-        
-        /*
-        if (data) {
-            console.group(logMessage);
-            console.log('Data:', data);
-            console.groupEnd();
-        } else {
-            console.log(logMessage);
-        }
-        */
       
         // Properly handle data logging
         if (data !== null && data !== undefined) {
@@ -243,8 +232,7 @@ class DataProcessor {
         // Clear previous timeout
         if (this.state.clearTimeout) {
             clearTimeout(this.state.clearTimeout);
-        }
-        
+        }        
       
         try {
 
@@ -289,23 +277,12 @@ class DataProcessor {
                 this.updateForceHistory(forces, timestamp);
                 Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated force history');
 
-                //this has moved to PressureSensorApp class
-                // Process CoP data if recording
-                //if (this.state.recording.isRecording) {
-                //    //this.processCoPData(readings, cop, timestamp);
-                //    this.recordingManager.processCoPData(readings, cop, timestamp);                  
-                //}
-
                 Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated histories', {
                     dataHistoryLength: this.state.visualization.dataHistory.length,
                     copHistoryLength: this.state.visualization.copHistory.length,
                     forceHistoryLength: this.state.visualization.forceHistory.length
                 });
               
-                // Update all visualizations
-                //moved this call to the processFrame method of the PressureSensorApp class
-                //this.updateVisualizations({ readings, cop, forces, timestamp });
-
                 return { readings, cop, forces, timestamp };
             }
 
@@ -313,8 +290,7 @@ class DataProcessor {
             Logger.log(CONFIG.DEBUG.ERROR, 'DataProcessor', 'Error processing frame:', error);
         }
       
-        return null;
-      
+        return null;      
       
         // Set clear timeout
         this.state.clearTimeout = setTimeout(() => {
@@ -323,28 +299,6 @@ class DataProcessor {
       
     }
   
-    /*
-    //moved this method to the PressureSensorApp class
-    updateVisualizations(data) {
-        if (this.state.app && this.state.app.visualizer) {
-            // Update heatmap
-            this.state.app.visualizer.updateHeatmap(data);
-            // Update CoP graph if we have CoP data
-            if (data.cop) {
-                this.state.app.visualizer.updateCoPGraph();
-            }
-            // Update velocity graph if we have velocity history
-            if (this.state.visualization.velocityHistory.length > 0) {
-                this.state.app.visualizer.updateVelocityGraph();
-            }
-            // Update force graph if we have force history
-            if (this.state.visualization.forceHistory.length > 0) {
-                this.state.app.visualizer.updateForceGraph();
-            }
-        }
-    }
-    */
-    
     parsePressureData(data) {
         try {
             if (data === '[]') return { readings: [], cop: null };
@@ -426,10 +380,9 @@ class DataProcessor {
 
         Logger.log(CONFIG.DEBUG.CALIBRATION, 'Calibration', 'Calibration completed:', this.state.calibration.data);
     }
-    
   
     // Left/right foot split
-    // Returns { left, right } arrays according to inversion and calibration/setting
+      // Returns { left, right } arrays according to inversion and calibration/setting
     getLeftRight(readings) {
         const method = this.state.app.state.weightDistMethod || 'perFrame';
         let xMid, invertX = this.state.settings.invertX;
@@ -450,7 +403,6 @@ class DataProcessor {
         const invertY = this.state.settings.invertY;
         return Utils.splitToeHeel(footReadings, yMid, invertY);
     }
-  
   
     updateDataHistory(readings, timestamp) {
         this.state.visualization.dataHistory.push({
@@ -558,61 +510,6 @@ class DataProcessor {
         }
         return { total: totalPressure, left: leftPressure, right: rightPressure };
     }
-  
-    //before determining left/right and heel/toe taking into account inversion settings
-    /*
-    calculateForces(readings) {
-        //const method = document.querySelector('input[name="weightDistMethod"]:checked').value;
-        const method = this.state.app.state.weightDistMethod || 'perFrame';
-      
-        //moved to global //const useLinearFit = true; // Could be made configurable
-        
-        let totalPressure = 0;
-        let leftPressure = 0;
-        let rightPressure = 0;
-        
-        if (method === 'calibrated' && this.state.calibration.data) {
-            const boundaries = this.state.calibration.data;
-            
-            if (useLinearFit) {
-                totalPressure = readings.reduce((sum, r) => sum + r.value, 0);
-                const leftFootReadings = readings.filter(r => r.x <= boundaries.xRange.mid);
-                const rightFootReadings = readings.filter(r => r.x > boundaries.xRange.mid);
-                
-                leftPressure = leftFootReadings.reduce((sum, r) => sum + r.value, 0);
-                rightPressure = rightFootReadings.reduce((sum, r) => sum + r.value, 0);
-            } else {
-                totalPressure = readings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
-                const leftFootReadings = readings.filter(r => r.x <= boundaries.xRange.mid);
-                const rightFootReadings = readings.filter(r => r.x > boundaries.xRange.mid);
-                
-                leftPressure = leftFootReadings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
-                rightPressure = rightFootReadings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
-            }
-        } else {
-            // Use per-frame method
-            const xValues = readings.map(r => r.x);
-            const minX = Math.min(...xValues);
-            const maxX = Math.max(...xValues);
-            const xMidpoint = minX + (maxX - minX) / 2;
-            
-            const leftFootReadings = readings.filter(r => r.x <= xMidpoint);
-            const rightFootReadings = readings.filter(r => r.x > xMidpoint);
-            
-            if (useLinearFit) {
-                totalPressure = readings.reduce((sum, r) => sum + r.value, 0);
-                leftPressure = leftFootReadings.reduce((sum, r) => sum + r.value, 0);
-                rightPressure = rightFootReadings.reduce((sum, r) => sum + r.value, 0);
-            } else {
-                totalPressure = readings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
-                leftPressure = leftFootReadings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
-                rightPressure = rightFootReadings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
-            }
-        }
-        
-        return { total: totalPressure, left: leftPressure, right: rightPressure };
-    }
-    */
 
     clearData() {
         this.state.visualization.dataHistory = [];
@@ -699,7 +596,7 @@ class Visualizer {
             Logger.log(CONFIG.DEBUG.ERROR, 'Visualizer', 'Error creating heatmap instance:', error);
             throw error;
         }
-    }  
+    }
   
     // Utility to create overlay layouts with titles and legend inside the plot area
     getOverlayLayout(titleText, xTitle, yTitle, showLegend = true) {
@@ -769,85 +666,8 @@ class Visualizer {
         };
     }  
   
-    initializeGraphs() {        
-        
-        /*
-        // Initialize CoP Graph (no throttling, usually cheap)
-        const copLayout = {
-            title: 'Center of Pressure (CoP) Graph',
-            xaxis: {
-                title: 'X Position (coordinate)',
-                autorange: true,
-                tickformat: '0.2f',
-                nticks: 10,
-                exponentformat: 'none',
-                showexponent: 'none'
-            },
-            yaxis: {
-                title: 'Y Position (coordinate)',
-                autorange: true,
-                tickformat: '0.2f',
-                nticks: 10,
-                exponentformat: 'none',
-                showexponent: 'none'
-            },
-            showlegend: false,              
-            autosize: true  // Responsive sizing
-        };        
-        
-        Plotly.newPlot('cop-graph', [], copLayout);        
-        this.coPGraphInitialized = true;
-        */
-                
-        /*
-        // Initialize Velocity Graph
-        const velocityLayout = {
-            title: 'CoP Velocity Components',
-            xaxis: {
-                title: 'Time (s)',
-                showgrid: true,
-                zeroline: true
-            },
-            yaxis: {
-                title: 'Velocity (in/s)',
-                showgrid: true,
-                zeroline: true
-            },
-            showlegend: true,
-            autosize: true  // Responsive sizing
-        };
-        
-        Plotly.newPlot('velocity-graph', [], velocityLayout);
-        this.velocityGraphInitialized = true;
-        */
-      
-        /*
-        // Initialize Force Graph
-        const forceLayout = {
-            title: {
-                text: 'Vertical Ground Reaction Force',
-                font: { size: 16 }
-            },
-            xaxis: {
-                title: 'Time (s)',
-                showgrid: true,
-                zeroline: true
-            },
-            yaxis: {
-                title: 'Force (% of static weight)',
-                showgrid: true,
-                zeroline: true
-            },
-            showlegend: true,
-            autosize: true  // Responsive sizing
-        };
-        
-        Plotly.newPlot('force-graph', [], forceLayout);
-        this.forceGraphInitialized = true;
-        */
-      
-      
-      //using getOverlayLayout to overlay most of graph info including titles and axes labels  
+    initializeGraphs() {
+        //using getOverlayLayout to overlay most of graph info including titles and axes labels  
       
         // CoP Graph (NO legend)
         Plotly.newPlot(
@@ -886,8 +706,7 @@ class Visualizer {
                 true
             )
         );
-        this.forceGraphInitialized = true;
-      
+        this.forceGraphInitialized = true;      
         
         Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'All graphs initialized');
     }
@@ -932,7 +751,6 @@ class Visualizer {
         }
 
         Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Updating heatmap with data:', data);
-
         
         const container = document.getElementById('heatmap-container');
       
@@ -943,27 +761,6 @@ class Visualizer {
       
         const scaleX = container.offsetWidth / this.state.settings.sensorsX;
         const scaleY = container.offsetHeight / this.state.settings.sensorsY;
-      
-        /*
-        //before adding flag to allow skipping inversion/scaling if playback
-        const processedData = data.readings.map(reading => {
-            let x = reading.x;
-            let y = reading.y;
-            
-            if (this.state.settings.invertX) {
-                x = this.state.settings.sensorsX - x;
-            }
-            if (!this.state.settings.invertY) {
-                y = this.state.settings.sensorsY - y;
-            }
-            
-            return {
-                x: x * scaleX,
-                y: y * scaleY,
-                value: reading.value
-            };
-        });
-        */
       
         //skip inversion/scaling if playback
         const isPlayback = this.state.isPlayback;
@@ -1047,30 +844,6 @@ class Visualizer {
         ctx.strokeStyle = 'yellow';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        
-        /*
-        //before adding flag to allow skipping inversion/scaling if playback
-        copHistory.forEach((point, index) => {
-            let x = point.x;
-            let y = point.y;
-            
-            if (this.state.settings.invertX) {
-                x = this.state.settings.sensorsX - x;
-            }
-            if (!this.state.settings.invertY) {
-                y = this.state.settings.sensorsY - y;
-            }
-            
-            const xScaled = (x * canvas.width) / this.state.settings.sensorsX;
-            const yScaled = (y * canvas.height) / this.state.settings.sensorsY;
-            
-            if (index === 0) {
-                ctx.moveTo(xScaled, yScaled);
-            } else {
-                ctx.lineTo(xScaled, yScaled);
-            }
-        });
-        */
       
         //console.log("Visualizer.drawCoPPath isPlayback = " + isPlayback);
       
@@ -1097,16 +870,6 @@ class Visualizer {
     drawCurrentCoP(ctx, canvas, cop) {
         let x = cop.x;
         let y = cop.y;
-      
-        /*
-        //before adding flag to allow skipping inversion/scaling if playback
-        if (this.state.settings.invertX) {
-            x = this.state.settings.sensorsX - x;
-        }
-        if (!this.state.settings.invertY) {
-            y = this.state.settings.sensorsY - y;
-        }
-        */
       
         //console.log("Visualizer.drawCurrentCoP this.state.isPlayback = " + this.state.isPlayback);
       
@@ -1146,25 +909,6 @@ class Visualizer {
         
         const timeString = this.formatTimeWithMillis(timestamp);
       
-      
-        /*
-        //before adding flag to allow skipping inversion/scaling if playback
-        // Adjust readings according to inversion settings
-        const adjustedReadings = readings.map(reading => ({
-            adjustedX: settings.invertX ? (settings.sensorsX - reading.x) : reading.x,
-            adjustedY: settings.invertY ? (settings.sensorsY - reading.y) : reading.y,
-            adjustedPressure: reading.value
-        }));
-        // Adjust CoP if present
-        let copHtml = "";
-        if (cop) {
-            let adjustedCoPx = settings.invertX ? (settings.sensorsX - cop.x) : cop.x;
-            let adjustedCoPy = settings.invertY ? (settings.sensorsY - cop.y) : cop.y;
-            copHtml = `<div>CoP: x=${adjustedCoPx.toFixed(2)}, y=${adjustedCoPy.toFixed(2)}</div>`;
-        }
-        */
-      
-      
         const isPlayback = this.state.isPlayback;
       
         //console.log("Visualizer.updateRawDataLive isPlayback = " + isPlayback);
@@ -1185,14 +929,6 @@ class Visualizer {
         let readingsHtml = adjustedReadings.map(r =>
             `<div>x: ${r.adjustedX}, y: ${r.adjustedY}, pressure: ${r.adjustedPressure}</div>`
         ).join("");
-
-        /*
-        rawData.innerHTML = `
-            <div>[${timeString}] Latest readings:</div>
-            ${readingsHtml}
-            ${copHtml}
-        `;
-        */
       
         rawData.innerHTML = `            
             <div>[${timeString}]</div>
@@ -1202,70 +938,7 @@ class Visualizer {
         `;
       
     }
-    
   
-    //before taking into account inversion settings for determining left/right and heel/toe 
-    /*
-    updateCoPGraph() {
-        const copHistory = this.state.visualization.copHistory;
-        //if (!copHistory.length) return;
-        if (!copHistory || copHistory.length === 0) {
-            Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'No CoP history to display');
-            return;
-        }
-        
-        const inchesPerSensorX = this.state.settings.matWidth / this.state.settings.sensorsX;
-        const inchesPerSensorY = this.state.settings.matHeight / this.state.settings.sensorsY;
-        
-        let xValues, yValues, title, xAxisTitle, yAxisTitle;
-      
-        //const copMode = document.querySelector('input[name="copMode"]:checked').value;
-        const copMode = this.state.app.state.copMode || 'normal';
-        
-        // Adjust coordinates based on mode
-        if (copMode === 'normal') {
-            xValues = copHistory.map(point => point.x);
-            yValues = copHistory.map(point => point.y);
-            title = 'Center of Pressure (CoP) Graph';
-            xAxisTitle = 'X Position (coordinate)';
-            yAxisTitle = 'Y Position (coordinate)';
-        } else {
-            const basePoint = copHistory[0];
-            xValues = copHistory.map(point => 
-                (point.x - basePoint.x) * inchesPerSensorX
-            );
-            yValues = copHistory.map(point => 
-                (point.y - basePoint.y) * inchesPerSensorY
-            );
-            title = 'Center of Pressure (CoP) Delta';
-            xAxisTitle = 'X Delta (inches)';
-            yAxisTitle = 'Y Delta (inches)';
-        }
-        
-        const trace = {
-            x: xValues,
-            y: yValues,
-            mode: 'lines+markers',
-            //type: 'scatter',
-            type: 'scattergl',  //uses WebGL to use GPU for higher performance
-            marker: { color: 'blue', size: 6 }
-        };
-      
-        //using getOverlayLayout to overlay most of graph info including titles and axes labels
-        const layout = this.getOverlayLayout(title, xAxisTitle, yAxisTitle, false);
-              
-        //Plotly.newPlot('cop-graph', [trace], layout);
-        
-        if (this.coPGraphInitialized) {
-            Plotly.react('cop-graph', [trace], layout);
-        } else {
-            Plotly.newPlot('cop-graph', [trace], layout);
-            this.coPGraphInitialized = true;
-        }      
-      
-    }
-    */
-    
     updateCoPGraph() {
         const copHistory = this.state.visualization.copHistory;
         if (!copHistory || copHistory.length === 0) {
@@ -1320,14 +993,13 @@ class Visualizer {
             Plotly.newPlot('cop-graph', [trace], layout);
             this.coPGraphInitialized = true;
         }
-    }  
+    }
   
     updateVelocityGraph() {
         
         const now = Date.now();
         if (now - this.lastVelocityUpdate < 100) return; // update at most every 100ms (10 FPS)
-        this.lastVelocityUpdate = now;
-        
+        this.lastVelocityUpdate = now;        
       
         const velocityHistory = this.state.visualization.velocityHistory;
         //if (velocityHistory.length < 2) return;
@@ -1364,26 +1036,6 @@ class Visualizer {
             }
         ];
         
-        /*
-        const layout = {
-            title: 'CoP Velocity Components',
-            xaxis: {
-                title: 'Time (s)',
-                showgrid: true,
-                zeroline: true,
-                autorange: 'reversed',
-                range: [-(this.state.settings.copHistoryLength / 30), 0]
-            },
-            yaxis: {
-                title: 'Velocity (in/s)',
-                showgrid: true,
-                zeroline: true
-            },
-            showlegend: true
-        };
-        */
-      
-        
         //using getOverlayLayout to overlay most of graph info including titles and axes labels
         const layout = this.getOverlayLayout(
             'CoP Velocity Components',
@@ -1392,8 +1044,7 @@ class Visualizer {
             true
         );
         layout.xaxis.autorange = 'reversed';
-        layout.xaxis.range = [-(this.state.settings.copHistoryLength / 30), 0];
-      
+        layout.xaxis.range = [-(this.state.settings.copHistoryLength / 30), 0];      
         
         //Plotly.newPlot('velocity-graph', traces, layout);
         
@@ -1411,8 +1062,7 @@ class Visualizer {
         
         const now = Date.now();
         if (now - this.lastForceUpdate < 100) return; // update at most every 100ms (10 FPS)
-        this.lastForceUpdate = now;
-        
+        this.lastForceUpdate = now;        
         
         const forceHistory = this.state.visualization.forceHistory;
         if (forceHistory.length < 2) return;
@@ -1431,13 +1081,50 @@ class Visualizer {
         
         //if (window.useLinearFit) {
         if (useLinearFit) {
-            leftForces = forceHistory.map(point => (point.left / point.total) * 100);
+            leftForces = forceHistory.map(point => (point.left / point.total) * 100);            
             rightForces = forceHistory.map(point => (point.right / point.total) * 100);
             totalForces = forceHistory.map(point => (point.total / referenceForce) * 100);
         } else {
-            leftForces = forceHistory.map(point => (point.left / point.total) * 100);
-            rightForces = forceHistory.map(point => (point.right / point.total) * 100);
-            totalForces = forceHistory.map(point => (point.total / referenceForce) * 100);
+          
+            //leftForces = forceHistory.map(point => (point.left / point.total) * 100);
+            //rightForces = forceHistory.map(point => (point.right / point.total) * 100);
+            //totalForces = forceHistory.map(point => (point.total / referenceForce) * 100);
+          
+            // Use power fit for left, right, and total
+            leftForces = forceHistory.map(point => {
+                const leftPower = Math.pow(
+                    (point.left / CONFIG.CALIBRATION.POWER_FIT_COEFFICIENT),
+                    1 / CONFIG.CALIBRATION.POWER_FIT_EXPONENT
+                );
+                const totalPower = Math.pow(
+                    (point.total / CONFIG.CALIBRATION.POWER_FIT_COEFFICIENT),
+                    1 / CONFIG.CALIBRATION.POWER_FIT_EXPONENT
+                );
+                return totalPower !== 0 ? (leftPower / totalPower) * 100 : 0;
+            });
+            rightForces = forceHistory.map(point => {
+                const rightPower = Math.pow(
+                    (point.right / CONFIG.CALIBRATION.POWER_FIT_COEFFICIENT),
+                    1 / CONFIG.CALIBRATION.POWER_FIT_EXPONENT
+                );
+                const totalPower = Math.pow(
+                    (point.total / CONFIG.CALIBRATION.POWER_FIT_COEFFICIENT),
+                    1 / CONFIG.CALIBRATION.POWER_FIT_EXPONENT
+                );
+                return totalPower !== 0 ? (rightPower / totalPower) * 100 : 0;
+            });
+            totalForces = forceHistory.map(point => {
+                const totalPower = Math.pow(
+                    (point.total / CONFIG.CALIBRATION.POWER_FIT_COEFFICIENT),
+                    1 / CONFIG.CALIBRATION.POWER_FIT_EXPONENT
+                );
+                const refPower = Math.pow(
+                    (referenceForce / CONFIG.CALIBRATION.POWER_FIT_COEFFICIENT),
+                    1 / CONFIG.CALIBRATION.POWER_FIT_EXPONENT
+                );
+                return refPower !== 0 ? (totalPower / refPower) * 100 : 0;
+            });          
+          
         }
         
         const traces = [
@@ -1473,28 +1160,6 @@ class Visualizer {
             }
         ];
         
-        /*
-        const layout = {
-            title: {
-                text: `Vertical Ground Reaction Force ${useLinearFit ? '(Linear)' : '(Power Fit)'}`,
-                font: { size: 16 }
-            },
-            xaxis: {
-                title: 'Time (s)',
-                showgrid: true,
-                zeroline: true,
-                autorange: 'reversed',
-                range: [-(this.state.settings.copHistoryLength / 30), 0]
-            },
-            yaxis: {
-                title: 'Force (% of static weight)',
-                showgrid: true,
-                zeroline: true
-            },
-            showlegend: true
-        };
-        */
-      
         //using getOverlayLayout to overlay most of graph info including titles and axes labels
         const layout = this.getOverlayLayout(
             `Vertical Ground Reaction Force ${window.useLinearFit ? '(Linear)' : '(Power Fit)'}`,
@@ -1503,8 +1168,7 @@ class Visualizer {
             true
         );
         layout.xaxis.autorange = 'reversed';
-        layout.xaxis.range = [-(this.state.settings.copHistoryLength / 30), 0];
-      
+        layout.xaxis.range = [-(this.state.settings.copHistoryLength / 30), 0];      
         
         //Plotly.newPlot('force-graph', traces, layout);
         
@@ -1517,102 +1181,6 @@ class Visualizer {
         }
         
     }
-            
-    
-    //before taking into account inversion settings for determining left/right and heel/toe 
-    /*
-    updatePressureDistributionLive(readings, cop, settings, dataProcessor) {
-        if (!readings || readings.length === 0) return;
-
-        // 1. Use DataProcessor's force calculation for left/right totals
-        const forces = dataProcessor.calculateForces(readings);
-
-        const total = forces.total;
-        const left = forces.left;
-        const right = forces.right;
-        if (total === 0) return;
-
-        // 2. Adjust readings for inversion for further splitting       
-        
-      
-        const isPlayback = this.state.isPlayback;
-        // Use unmodified readings if playback, otherwise invert
-        const adjReadings = isPlayback ? readings : readings.map(r => ({
-            ...r,
-            x: settings.invertX ? (settings.sensorsX - r.x) : r.x,
-            y: settings.invertY ? (settings.sensorsY - r.y) : r.y,
-            value: r.value
-        }));
-        // ...rest of method same, but use adjReadings everywhere...
-        // (rest of the function unchanged, just replace "readings" -> "adjReadings")
-      
-
-        // 3. Determine left/right split
-        let leftFoot, rightFoot;
-        if (settings.weightDistMethod === "calibrated" && dataProcessor.state.calibration.data) {
-            // Use calibrated x boundary
-            const xMid = dataProcessor.state.calibration.data.xRange.mid;
-            //leftFoot = adjustedReadings.filter(r => r.x <= xMid);
-            //rightFoot = adjustedReadings.filter(r => r.x > xMid);
-            leftFoot = adjReadings.filter(r => r.x <= xMid);
-            rightFoot = adjReadings.filter(r => r.x > xMid);
-        } else {
-            // Per-frame: split at x midpoint
-            //const xVals = adjustedReadings.map(r => r.x);
-            const xVals = adjReadings.map(r => r.x);
-            const xMid = Math.min(...xVals) + (Math.max(...xVals) - Math.min(...xVals)) / 2;
-            //leftFoot = adjustedReadings.filter(r => r.x <= xMid);
-            //rightFoot = adjustedReadings.filter(r => r.x > xMid);
-            leftFoot = adjReadings.filter(r => r.x <= xMid);
-            rightFoot = adjReadings.filter(r => r.x > xMid);
-        }
-
-        // 4. Value function: linear or power fit
-        const useLinearFit = (typeof window.useLinearFit !== "undefined" ? window.useLinearFit : true);
-        const valueFunc = useLinearFit
-            ? (r) => r.value
-            : (r) => Math.pow(
-                (r.value / (settings.POWER_FIT_COEFFICIENT || 1390.2)),
-                1 / (settings.POWER_FIT_EXPONENT || 0.1549)
-            );
-
-        // 5. Y midpoint for toe/heel split (per foot)
-        function toeHeelPerc(footReadings) {
-            if (!footReadings.length) return { toe: 0, heel: 0 };
-            const yVals = footReadings.map(r => r.y);
-            const yMid = Math.min(...yVals) + (Math.max(...yVals) - Math.min(...yVals)) / 2;
-            const toe = footReadings.filter(r => r.y > yMid);
-            const heel = footReadings.filter(r => r.y <= yMid);
-            const toeSum = toe.reduce((sum, r) => sum + valueFunc(r), 0);
-            const heelSum = heel.reduce((sum, r) => sum + valueFunc(r), 0);
-            const footTotal = footReadings.reduce((sum, r) => sum + valueFunc(r), 0);
-            return {
-                toe: footTotal ? ((toeSum / footTotal) * 100).toFixed(1) : "0.0",
-                heel: footTotal ? ((heelSum / footTotal) * 100).toFixed(1) : "0.0"
-            };
-        }
-
-        const leftTotal = leftFoot.reduce((sum, r) => sum + valueFunc(r), 0);
-        const rightTotal = rightFoot.reduce((sum, r) => sum + valueFunc(r), 0);
-
-        const leftPercent = total ? ((leftTotal / total) * 100).toFixed(1) : "0.0";
-        const rightPercent = total ? ((rightTotal / total) * 100).toFixed(1) : "0.0";
-
-        document.getElementById('front-percentage').textContent = leftPercent;
-        document.getElementById('back-percentage').textContent = rightPercent;
-
-        // Per-foot toe/heel
-        const leftTH = toeHeelPerc(leftFoot);
-        const rightTH = toeHeelPerc(rightFoot);
-
-        document.getElementById('front-toe-percentage').textContent = `Toe: ${leftTH.toString ? leftTH.toe : leftTH.toe}%`;
-        document.getElementById('front-heel-percentage').textContent = `Heel: ${leftTH.toString ? leftTH.heel : leftTH.heel}%`;
-        document.getElementById('back-toe-percentage').textContent = `Toe: ${rightTH.toString ? rightTH.toe : rightTH.toe}%`;
-        document.getElementById('back-heel-percentage').textContent = `Heel: ${rightTH.toString ? rightTH.heel : rightTH.heel}%`;
-    }
-    */
-    
-    
     
     // Helper for inverting for display (not for logic/splits)
     _invertForDisplay(r, settings, isPlayback) {
@@ -1624,22 +1192,8 @@ class Visualizer {
         };
     }
     
-    
-    
     updatePressureDistributionLive(readings, cop, settings, dataProcessor) {
         if (!readings || readings.length === 0) return;
-
-        /*
-        //only do inversions for displayed data / visualizations... not for logic splits
-        const isPlayback = this.state.isPlayback;
-        const adjReadings = isPlayback ? readings : readings.map(r => ({
-            ...r,
-            x: settings.invertX ? (settings.sensorsX - r.x) : r.x,
-            y: settings.invertY ? (settings.sensorsY - r.y) : r.y,
-            value: r.value
-        }));
-        */
-
       
         // --- LOGIC SPLITS: always use raw readings ---
           // Use DataProcessor logic for left/right split        
@@ -1700,8 +1254,7 @@ class Visualizer {
             x: invertX ? (sensorsX - point.x) : point.x,
             y: invertY ? (sensorsY - point.y) : point.y
         };
-    }
-    
+    }    
     
     clearAll() {
         // Clear heatmap data
@@ -1714,28 +1267,6 @@ class Visualizer {
         this.state.visualization.copHistory = [];
         this.state.visualization.velocityHistory = [];
         this.state.visualization.forceHistory = [];
-
-        /*
-        // Clear graphs
-        Plotly.newPlot('cop-graph', [], {
-            title: 'Center of Pressure (CoP) Graph',
-            xaxis: { title: 'X Position (coordinate)' },
-            yaxis: { title: 'Y Position (coordinate)' }
-        });
-
-        Plotly.newPlot('velocity-graph', [], {
-            title: 'CoP Velocity Components',
-            xaxis: { title: 'Time (s)' },
-            yaxis: { title: 'Velocity (in/s)' }
-        });
-
-        Plotly.newPlot('force-graph', [], {
-            title: 'Vertical Ground Reaction Force',
-            xaxis: { title: 'Time (s)' },
-            yaxis: { title: 'Force (% of static weight)' }
-        });
-        */
-      
       
         // Clear graphs - updated for titles and axes titles overlay
         // CoP Graph (NO legend)
@@ -1891,7 +1422,6 @@ class BluetoothManager {
         const rawData = Array.from(event.target.value);
         Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Raw data received as bytes:', rawData);
         Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Decoded chunk:', chunk);
-
         
         this.state.dataBuffer += chunk;
         
@@ -1901,15 +1431,8 @@ class BluetoothManager {
             this.state.dataBuffer = this.state.dataBuffer.substring(newlineIndex + 1);
             
             //Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Complete frame extracted:', frame);
-            Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Frame extracted:', frame);
-          
-            /*
-            if (frame) {
-                //app.processFrame(frame);
-                this.state.app.processFrame(frame);
-            }
-            */
-          
+            Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Frame extracted:', frame);          
+            
             if (frame) {
                 try {
                     // Make sure we're calling the right instance method
@@ -1921,10 +1444,10 @@ class BluetoothManager {
                 } catch (error) {
                     Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Error processing frame:', error);
                 }
-            }
-          
+            }          
           
         }
+      
     }
     
     handleDisconnection(event) {
@@ -1978,7 +1501,7 @@ class BluetoothManager {
         document.getElementById('scanButton').disabled = isConnected;
         document.getElementById('status').textContent = 
             isConnected ? 'Connected and receiving data' : 'Disconnected';
-    }  
+    }
   
 }  //end of class BluetoothManager
 
@@ -2369,6 +1892,7 @@ class PlaybackManager {
 // PATCH SECTION: Replace the entire PlaybackManager class with the following:
 
 class PlaybackManager {
+    
     constructor(appState) {
         this.state = appState;
         this.isPlaying = false;
@@ -2489,6 +2013,9 @@ class PlaybackManager {
                 vy: 0
             });
 
+      
+        //const useLinearFit = (typeof window.useLinearFit !== "undefined" ? window.useLinearFit : true);
+      
         // Build force history up to this frame
         const forcesHistory = this.state.recording.playbackData.slice(0, frameIndex + 1)
             .map(f => {
@@ -2507,10 +2034,24 @@ class PlaybackManager {
                   // Always use invertX = false here because playback data is already in display-space
                 const { left: leftFoot, right: rightFoot } = Utils.splitLeftRight(readings, xMid, false);
               
-                let total = readings.reduce((sum, r) => sum + r.value, 0);
-                let left = leftFoot.reduce((sum, r) => sum + r.value, 0);
-                let right = rightFoot.reduce((sum, r) => sum + r.value, 0);
+                //let total = readings.reduce((sum, r) => sum + r.value, 0);
+                //let left = leftFoot.reduce((sum, r) => sum + r.value, 0);
+                //let right = rightFoot.reduce((sum, r) => sum + r.value, 0);
+                //return { total, left, right, timestamp: f.timestamp };
+                                
+                let total, left, right;
+              
+                if (useLinearFit) {
+                    total = readings.reduce((sum, r) => sum + r.value, 0);
+                    left = leftFoot.reduce((sum, r) => sum + r.value, 0);
+                    right = rightFoot.reduce((sum, r) => sum + r.value, 0);
+                } else {
+                    total = readings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+                    left = leftFoot.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+                    right = rightFoot.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+                }
                 return { total, left, right, timestamp: f.timestamp };
+                
             });
 
         // 2. Update Visualizer's temporary state for playback
@@ -2535,8 +2076,7 @@ class PlaybackManager {
 
         // Get total duration for x-axis range
         const totalDuration = (this.state.recording.playbackData[this.state.recording.playbackData.length - 1].timestamp - startTime) / 1000;
-        
-      
+              
         // 4. Update CoP graph
         this.state.app.visualizer.updateCoPGraph();
       
@@ -2573,7 +2113,6 @@ class PlaybackManager {
         velocityLayout.xaxis.range = [0, totalDuration];
 
         Plotly.react('velocity-graph', velocityTraces, velocityLayout);
-
 
         // 6. Update force graph
         //this.state.app.visualizer.updateForceGraph();
@@ -2616,8 +2155,7 @@ class PlaybackManager {
         );
         forceLayout.xaxis.range = [0, totalDuration];
 
-        Plotly.react('force-graph', forceTraces, forceLayout);
-      
+        Plotly.react('force-graph', forceTraces, forceLayout);      
       
 
         // 7. Update pressure distribution (now with heel/toe splits)
@@ -2640,7 +2178,7 @@ class PlaybackManager {
         //comment this out to have the CoP Stats update once when the swing finishes recording and then stay the same
         //this.updateCoPStatsDisplay(copHistory, frameIndex);
 
-    }
+    }  //end of updateVisualizationsForFrame method
 
     // --- PATCH: Show all CoP stats during playback (and after a swing) ---
     updateCoPStatsDisplay(copHistory, frameIndex) {
@@ -2762,7 +2300,8 @@ class PlaybackManager {
         this.currentFrameIndex = index;
         this.showFrame(this.currentFrameIndex);
     }
-}
+  
+}  //end of PlaybackManager class
 
 
 // Main Application Class
@@ -2827,20 +2366,16 @@ class PressureSensorApp {
     setupEventListeners() {
         document.getElementById('scanButton').addEventListener('click', () => 
             this.bluetooth.scanForDevices()
-        );
-        
+        );        
         document.getElementById('disconnectButton').addEventListener('click', () => 
             this.bluetooth.disconnect()
-        );
-        
+        );        
         document.getElementById('calibrateStanceButton').addEventListener('click', () => 
             this.startStanceCalibration()
-        );
-        
+        );        
         document.getElementById('readyButton').addEventListener('click', () => 
             this.recordingManager.startCountdown()
-        );
-      
+        );      
         document.getElementById('normalMode').addEventListener('change', () => {
             this.state.copMode = 'normal';
             this.visualizer.updateCoPGraph();
@@ -2852,14 +2387,11 @@ class PressureSensorApp {
             this.visualizer.updateCoPGraph();
             this.visualizer.updateVelocityGraph();
             this.visualizer.updateForceGraph();
-        });
-        
+        });        
         window.addEventListener('resize', Utils.debounce(() => {
             this.visualizer.adjustContainerDimensions();
             this.visualizer.updateHeatmap(this.state.visualization.dataHistory);
         }, 250));
-      
-        
         document.getElementsByName('weightDistMethod').forEach(radio => {
             radio.addEventListener('change', (e) => {
                 this.state.weightDistMethod = e.target.value;
@@ -2880,7 +2412,6 @@ class PressureSensorApp {
                 }
             });
         });
-
       
         const SETTINGS_SLIDERS = [
             'clearTime',
@@ -2940,13 +2471,11 @@ class PressureSensorApp {
         document.getElementById('settingsToggle').addEventListener('change', (e) => {
             document.getElementById('settingsSection').style.display = 
                 e.target.checked ? 'block' : 'none';
-        });
-        
+        });        
         document.getElementById('matSettingsToggle').addEventListener('change', (e) => {
             document.getElementById('matSettingsSection').style.display = 
                 e.target.checked ? 'block' : 'none';
-        });
-        
+        });        
         document.getElementById('debugInformationToggle').addEventListener('change', (e) => {
             document.getElementById('connection-info').style.display = 
                 e.target.checked ? 'block' : 'none';
@@ -3007,23 +2536,7 @@ class PressureSensorApp {
     processFrame(frame) {
         this.state.isPlayback = false;
         const processedData = this.dataProcessor.processFrame(frame);
-        if (processedData) {            
-            /*
-            //moved these to the updateVisualizations method just below
-            this.visualizer.updateHeatmap(processedData);          
-            this.visualizer.updateRawDataLive(
-                processedData.readings,
-                processedData.cop,
-                processedData.timestamp,
-                this.state.settings
-            );          
-            this.visualizer.updatePressureDistributionLive(
-                processedData.readings,
-                processedData.cop,
-                this.state.settings,
-                this.dataProcessor
-            );
-            */
+        if (processedData) {
           
             this.updateVisualizations(processedData);
             
@@ -3035,7 +2548,7 @@ class PressureSensorApp {
                 );
             }
         }
-    }  
+    }
     
     updateVisualizations(processedData) {
         // Update the heatmap
