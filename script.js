@@ -2,7 +2,7 @@
  * Pressure Sensor Visualization Application
  * Version: 2.0.0
  * Author: smoke14cu4
- * Last Updated: 04-21-2025 
+ * Last Updated: 04-22-2025 
  */
 
 
@@ -384,6 +384,8 @@ class DataProcessor {
     // Left/right foot split
       // Returns { left, right } arrays according to inversion and calibration/setting
     getLeftRight(readings) {
+        //const isPlayback = this.state.isPlayback;
+        const isPlayback = window.app.state.isPlayback;
         const method = this.state.app.state.weightDistMethod || 'perFrame';
         let xMid, invertX = this.state.settings.invertX;
         if (method === 'calibrated' && this.state.calibration.data) {
@@ -392,16 +394,29 @@ class DataProcessor {
             const xVals = readings.map(r => r.x);
             xMid = Math.min(...xVals) + (Math.max(...xVals) - Math.min(...xVals)) / 2;
         }
-        return Utils.splitLeftRight(readings, xMid, invertX);
+        if (isPlayback) {
+            return Utils.splitLeftRight(readings, xMid, false); //don't apply any inversion here during playback        
+        }
+        else {
+            return Utils.splitLeftRight(readings, xMid, invertX);
+        }
+      
     }
   
     // Toe/heel split (used for one foot at a time)
     getToeHeel(footReadings) {
+        //const isPlayback = this.state.isPlayback;
+        const isPlayback = window.app.state.isPlayback;
         if (!footReadings.length) return { toe: [], heel: [] };
         const yVals = footReadings.map(r => r.y);
         const yMid = Math.min(...yVals) + (Math.max(...yVals) - Math.min(...yVals)) / 2;
         const invertY = this.state.settings.invertY;
-        return Utils.splitToeHeel(footReadings, yMid, invertY);
+        if (isPlayback) {
+            return Utils.splitToeHeel(footReadings, yMid, false);  //don't apply any inversion here during playback
+        }
+        else {
+            return Utils.splitToeHeel(footReadings, yMid, invertY);
+        }
     }
   
     updateDataHistory(readings, timestamp) {
@@ -749,6 +764,8 @@ class Visualizer {
             Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Skipping heatmap update - missing data or instance');
             return;
         }
+      
+        //console.log("Visualizer.updateHeatmap isPlayback:", this.state.isPlayback, this.state);
 
         Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Updating heatmap with data:', data);
         
@@ -763,8 +780,11 @@ class Visualizer {
         const scaleY = container.offsetHeight / this.state.settings.sensorsY;
       
         //skip inversion/scaling if playback
-        const isPlayback = this.state.isPlayback;
-        //console.log("Visualizer.updateHeatmap isPlayback = " + isPlayback);
+        //const isPlayback = this.state.isPlayback;
+        const isPlayback = window.app.state.isPlayback;
+      
+        //console.log("Visualizer.updateHeatmap isPlayback = " + window.app.state.isPlayback);
+      
         const processedData = data.readings.map(reading => {
             let x = reading.x;
             let y = reading.y;
@@ -839,7 +859,8 @@ class Visualizer {
         const copHistory = this.state.visualization.copHistory;
         if (!copHistory.length) return;
         
-        const isPlayback = this.state.isPlayback;
+        //const isPlayback = this.state.isPlayback;
+        const isPlayback = window.app.state.isPlayback;      
         
         ctx.strokeStyle = 'yellow';
         ctx.lineWidth = 2;
@@ -871,9 +892,10 @@ class Visualizer {
         let x = cop.x;
         let y = cop.y;
       
-        //console.log("Visualizer.drawCurrentCoP this.state.isPlayback = " + this.state.isPlayback);
+        //console.log("Visualizer.drawCurrentCoP this.state.isPlayback = " + window.app.state.isPlayback);
       
-        if (!this.state.isPlayback) {
+        //if (!this.state.isPlayback) {
+        if (!window.app.state.isPlayback) {  
             if (this.state.settings.invertX) {
               x = this.state.settings.sensorsX - x;
             }
@@ -909,7 +931,8 @@ class Visualizer {
         
         const timeString = this.formatTimeWithMillis(timestamp);
       
-        const isPlayback = this.state.isPlayback;
+        //const isPlayback = this.state.isPlayback;
+        const isPlayback = window.app.state.isPlayback;
       
         //console.log("Visualizer.updateRawDataLive isPlayback = " + isPlayback);
       
@@ -949,11 +972,14 @@ class Visualizer {
         const inchesPerSensorY = this.state.settings.matHeight / this.state.settings.sensorsY;
 
         const copMode = this.state.app.state.copMode || 'normal';
-        const isPlayback = this.state.isPlayback;
+        //const isPlayback = this.state.isPlayback;
+        const isPlayback = window.app.state.isPlayback;
         const invertX = this.state.settings.invertX;
         const invertY = this.state.settings.invertY;
         const sensorsX = this.state.settings.sensorsX;
         const sensorsY = this.state.settings.sensorsY;
+        
+        //console.log("Visualizer.updateCoPGraph isPlayback = " + isPlayback);
 
         let xValues, yValues, title, xAxisTitle, yAxisTitle;
 
@@ -1541,6 +1567,9 @@ class RecordingManager {
         this.state.recording.lastCopPosition = null;
         this.state.recording.startTime = null;
         this.state.recording.maxSpeedRecorded = 0;
+        // --- PATCH: Store invert state at start of recording ---
+        //this.state.recording.invertXAtRecord = this.state.settings.invertX;
+        //this.state.recording.invertYAtRecord = this.state.settings.invertY;
     }
     
     processCoPData(readings, cop) {
@@ -1677,219 +1706,8 @@ class RecordingManager {
         }        
     }
   
-}  //end of class RecordingManager {
+}  //end of class RecordingManager 
 
-
-//old version of Playback Manager that didn't have correct calls for updating visualiztions and etc
-/*
-// Playback Manager
-class PlaybackManager {
-  
-    constructor(appState) {
-        this.state = appState;
-        this.isPlaying = false;
-        this.playbackInterval = null;
-        this.currentFrameIndex = 0;
-        
-        this.initializeControls();
-    }
-    
-    initializeControls() {
-        document.getElementById('skipStart').addEventListener('click', () => this.skipToFrame(0));
-        document.getElementById('reversePlay').addEventListener('click', () => this.playReverse());
-        document.getElementById('prevFrame').addEventListener('click', () => this.showPrevFrame());
-        document.getElementById('playPause').addEventListener('click', () => this.togglePlay());
-        document.getElementById('nextFrame').addEventListener('click', () => this.showNextFrame());
-        document.getElementById('forwardPlay').addEventListener('click', () => this.playForward());
-        document.getElementById('skipEnd').addEventListener('click', () => this.skipToFrame(-1));
-        
-        document.getElementById('frameSlider').addEventListener('input', (e) => {
-            this.skipToFrame(parseInt(e.target.value));
-        });
-        
-        document.getElementById('playbackSpeed').addEventListener('change', (e) => {
-            this.state.settings.playbackSpeed = parseFloat(e.target.value);
-            if (this.isPlaying) {
-                this.stopPlayback();
-                this.startPlayback();
-            }
-        });
-    }
-    
-    initializePlayback() {
-        if (!this.state.recording.playbackData?.length) {
-            Logger.log(CONFIG.DEBUG.ERROR, 'Playback', 'No recorded data to playback');
-            return;
-        }
-        
-        const slider = document.getElementById('frameSlider');
-        slider.max = this.state.recording.playbackData.length - 1;
-        slider.value = 0;
-        this.currentFrameIndex = 0;
-        this.showFrame(0);
-    }
-    
-    showFrame(frameIndex) {
-        if (!this.state.recording.playbackData || 
-            frameIndex < 0 || 
-            frameIndex >= this.state.recording.playbackData.length) return;
-        
-        const frame = this.state.recording.playbackData[frameIndex];
-        const startTime = this.state.recording.playbackData[0].timestamp;
-        const frameTime = (frame.timestamp - startTime) / 1000;
-        
-        document.getElementById('timeDisplay').textContent = frameTime.toFixed(3) + 's';
-        document.getElementById('frameSlider').value = frameIndex;
-        
-        this.updateVisualizationsForFrame(frame, frameIndex);
-    }
-    
-    updateVisualizationsForFrame(frame, frameIndex) {
-        if (!frame) {
-            Logger.log(CONFIG.DEBUG.ERROR, 'Playback', 'No frame data provided');
-            return;
-        }
-        
-        this.state.app.visualizer.updateHeatmap({ readings: frame.pressure, cop: frame.cop });
-        this.state.app.visualizer.updateCoPGraph();
-        this.state.app.visualizer.updateVelocityGraph();
-        this.state.app.visualizer.updateForceGraph();
-        
-        this.updatePressureDistribution(frame);
-        this.updateRawDataDisplay(frame);
-    }
-  
-    updatePressureDistribution(frame) {
-        if (!frame || !frame.pressure) return;
-
-        // Calculate total pressure
-        const totalPressure = frame.pressure.reduce((sum, p) => sum + p.value, 0);
-        if (totalPressure === 0) return;
-
-        // Calculate midpoint for left/right foot separation
-        const xValues = frame.pressure.map(p => p.x);
-        const xMidpoint = (Math.min(...xValues) + Math.max(...xValues)) / 2;
-
-        // Separate readings by foot
-        const leftFoot = frame.pressure.filter(p => p.x <= xMidpoint);
-        const rightFoot = frame.pressure.filter(p => p.x > xMidpoint);
-
-        // Calculate percentages
-        const leftTotal = leftFoot.reduce((sum, p) => sum + p.value, 0);
-        const rightTotal = rightFoot.reduce((sum, p) => sum + p.value, 0);
-
-        const leftPercentage = ((leftTotal / totalPressure) * 100).toFixed(1);
-        const rightPercentage = ((rightTotal / totalPressure) * 100).toFixed(1);
-
-        // Update display
-        document.getElementById('front-percentage').textContent = leftPercentage;
-        document.getElementById('back-percentage').textContent = rightPercentage;
-    }
-
-    updateRawDataDisplay(frame) {
-        const rawData = document.getElementById('raw-data');
-        if (!rawData || !frame) return;
-
-        const timestamp = (frame.timestamp - this.state.recording.playbackData[0].timestamp) / 1000;
-
-        const data = {
-            time: timestamp.toFixed(3) + 's',
-            cop: frame.cop ? 
-                `(${frame.cop.x.toFixed(2)}, ${frame.cop.y.toFixed(2)})` : 
-                'N/A',
-            pressurePoints: frame.pressure.length
-        };
-
-        rawData.innerHTML = `
-            Time: ${data.time}
-            CoP: ${data.cop}
-            Active Sensors: ${data.pressurePoints}
-        `;
-    }
-    
-    togglePlay() {
-        if (this.isPlaying) {
-            this.stopPlayback();
-        } else {
-            this.playForward();
-        }
-    }
-    
-    playForward() {
-        if (this.isPlaying) return;
-        this.isPlaying = true;
-        document.getElementById('playPause').textContent = '⏸';
-        this.startPlayback(1);
-    }
-    
-    playReverse() {
-        if (this.isPlaying) return;
-        this.isPlaying = true;
-        document.getElementById('playPause').textContent = '⏸';
-        this.startPlayback(-1);
-    }
-    
-    startPlayback(direction) {
-        const frameLength = this.state.recording.playbackData.length;
-        const startTime = this.state.recording.playbackData[0].timestamp;
-        const endTime = this.state.recording.playbackData[frameLength - 1].timestamp;
-        const timePerFrameMs = (endTime - startTime) / frameLength;
-        
-        this.playbackInterval = setInterval(() => {
-            if (direction === 1) {
-                this.currentFrameIndex++;
-                if (this.currentFrameIndex >= this.state.recording.playbackData.length) {
-                    this.stopPlayback();
-                    return;
-                }
-            } else {
-                this.currentFrameIndex--;
-                if (this.currentFrameIndex < 0) {
-                    this.stopPlayback();
-                    return;
-                }
-            }
-            this.showFrame(this.currentFrameIndex);
-        }, timePerFrameMs / this.state.settings.playbackSpeed);
-    }
-    
-    stopPlayback() {
-        if (this.playbackInterval) {
-            clearInterval(this.playbackInterval);
-            this.playbackInterval = null;
-        }
-        this.isPlaying = false;
-        document.getElementById('playPause').textContent = '⏯';
-    }
-    
-    showNextFrame() {
-        this.stopPlayback();
-        if (this.currentFrameIndex < this.state.recording.playbackData.length - 1) {
-            this.showFrame(++this.currentFrameIndex);
-        }
-    }
-    
-    showPrevFrame() {
-        this.stopPlayback();
-        if (this.currentFrameIndex > 0) {
-            this.showFrame(--this.currentFrameIndex);
-        }
-    }
-    
-    skipToFrame(index) {
-        this.stopPlayback();
-        if (index === -1) index = this.state.recording.playbackData.length - 1;
-        this.currentFrameIndex = index;
-        this.showFrame(this.currentFrameIndex);
-    }
-  
-}  //end of class PlaybackManager
-
-*/
-
-
-
-// PATCH SECTION: Replace the entire PlaybackManager class with the following:
 
 class PlaybackManager {
     
@@ -1925,7 +1743,13 @@ class PlaybackManager {
     }
 
     initializePlayback() {
-        this.state.isPlayback = true;
+      
+        //this.state.isPlayback = true;
+        window.app.state.isPlayback = true;
+        
+        //console.log("PlaybackManager starting playback, setting state.isPlayback to true", this.state);
+        
+        //console.log("PlaybackManager.initializePlayback window.app.state.isPlayback = " + window.app.state.isPlayback);
       
         if (!this.state.recording.playbackData?.length) {
             Logger.log(CONFIG.DEBUG.ERROR, 'Playback', 'No recorded data to playback');
@@ -1954,7 +1778,9 @@ class PlaybackManager {
 
         this.updateVisualizationsForFrame(frame, frameIndex);
     }
-
+    
+    
+    //before fix for playback data inverting incorrectly    
     // --- PATCH: Main playback visualization update logic ---
     updateVisualizationsForFrame(frame, frameIndex) {
         if (!frame) {
@@ -1990,8 +1816,7 @@ class PlaybackManager {
             if (dt === 0) continue;
           
             const inchesPerSensorX = this.state.settings.matWidth / this.state.settings.sensorsX;
-            const inchesPerSensorY = this.state.settings.matHeight / this.state.settings.sensorsY;
-                    
+            const inchesPerSensorY = this.state.settings.matHeight / this.state.settings.sensorsY;                    
           
             const dx = (curr.x - prev.x) * inchesPerSensorX;
             const dy = (curr.y - prev.y) * inchesPerSensorY;
@@ -2033,11 +1858,6 @@ class PlaybackManager {
                 //still run the readings thru the Utils.splitLeftRight to determine which is left and which is right based on inversion
                   // Always use invertX = false here because playback data is already in display-space
                 const { left: leftFoot, right: rightFoot } = Utils.splitLeftRight(readings, xMid, false);
-              
-                //let total = readings.reduce((sum, r) => sum + r.value, 0);
-                //let left = leftFoot.reduce((sum, r) => sum + r.value, 0);
-                //let right = rightFoot.reduce((sum, r) => sum + r.value, 0);
-                //return { total, left, right, timestamp: f.timestamp };
                                 
                 let total, left, right;
               
@@ -2179,8 +1999,8 @@ class PlaybackManager {
         //this.updateCoPStatsDisplay(copHistory, frameIndex);
 
     }  //end of updateVisualizationsForFrame method
-
-    // --- PATCH: Show all CoP stats during playback (and after a swing) ---
+  
+  
     updateCoPStatsDisplay(copHistory, frameIndex) {
         // Default to playback's full path unless a subset is wanted
         if (!copHistory || copHistory.length < 2) {
@@ -2534,7 +2354,22 @@ class PressureSensorApp {
     }
     
     processFrame(frame) {
+        
+        // PATCH: If currently in playback mode, ignore any live frames
+        if (this.state.isPlayback) {
+            // Optionally log this for debugging:
+            //console.log("Ignoring live data frame because playback is active.");
+            return;
+        }
         this.state.isPlayback = false;
+        
+        //window.app.state.isPlayback = false;
+      
+        //console.log("PressureSensorApp.processFrame setting state.isPlayback to false", this.state);
+        
+        //console.log("PressureSensorApp.processFrame window.app.state.isPlayback = " + window.app.state.isPlayback);
+      
+      
         const processedData = this.dataProcessor.processFrame(frame);
         if (processedData) {
           
@@ -2584,7 +2419,7 @@ class PressureSensorApp {
         if (this.state.visualization.forceHistory.length > 0) {
             this.visualizer.updateForceGraph();
         }
-    }    
+    }
   
     startStanceCalibration() {
         const button = document.getElementById('calibrateStanceButton');
