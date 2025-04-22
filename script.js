@@ -149,10 +149,11 @@ class Logger {
             console.log(logBase);
         }
         
-        this.updateUI(message, level === CONFIG.DEBUG.ERROR);
+        //this.updateUI(message, level === CONFIG.DEBUG.ERROR);
         
     }
-    
+  
+    /*
     static updateUI(message, isError = false) {
         const connectionInfo = document.getElementById('connection-info');
         if (!connectionInfo) return;
@@ -167,6 +168,19 @@ class Logger {
         `;
         connectionInfo.scrollTop = connectionInfo.scrollHeight;
     }
+    */
+    
+    // Update connection info
+    static updateConnectionInfo(message, isError = false) {
+        const connectionInfo = document.getElementById('connection-info');
+        const timestamp = new Date().toLocaleTimeString();
+        const color = isError ? '#ff4444' : '#4CAF50';
+        connectionInfo.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+        connectionInfo.scrollTop = connectionInfo.scrollHeight;
+    }
+    
+    //Logger.updateConnectionInfo(`Connecting to device: ${device.name || 'Unnamed Device'} (Attempt ${retryCount + 1})`);
+    
 }
 
 // State Management
@@ -208,7 +222,7 @@ class AppState {
     
     updateSetting(key, value) {
         this.settings[key] = value;
-        Logger.log(CONFIG.DEBUG.BASIC, 'Settings', `Updated ${key} to ${value}`);
+        //Logger.log(CONFIG.DEBUG.BASIC, 'Settings', `Updated ${key} to ${value}`);
     }
 }
 
@@ -218,16 +232,16 @@ class DataProcessor {
   
     constructor(appState) {
         this.state = appState;
-        Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Initialized with state:', {
-            settings: this.state.settings
-        });
+        //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Initialized with state:', {
+        //    settings: this.state.settings
+        //});
     }
     
     processFrame(frame) {
         //if (!frame) return;
         
         //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Processing frame', frame);        
-        Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Raw frame received:', frame);
+        //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Raw frame received:', frame);
       
         // Clear previous timeout
         if (this.state.clearTimeout) {
@@ -238,7 +252,7 @@ class DataProcessor {
 
             //const timestamp = Date.now();
             const { readings, cop } = this.parsePressureData(frame);          
-            Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Parsed pressure data:', { readings, cop });
+            //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Parsed pressure data:', { readings, cop });
             //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Parsed data:', { readings, cop });
 
             //if (readings.length > 0) {
@@ -248,22 +262,22 @@ class DataProcessor {
                 // Update histories
                 this.updateDataHistory(readings, timestamp); 
                 //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated data history');
-                Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated data history:', {
-                    historyLength: this.state.visualization.dataHistory.length,
-                    latestReadings: readings
-                });
+                //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated data history:', {
+                //    historyLength: this.state.visualization.dataHistory.length,
+                //    latestReadings: readings
+                //});
               
                 if (cop) {
                     this.updateCopHistory(cop, timestamp);
                     //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated CoP history');
-                    Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated CoP history:', {
-                        historyLength: this.state.visualization.copHistory.length,
-                        latestCoP: cop
-                    });
+                    //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated CoP history:', {
+                    //    historyLength: this.state.visualization.copHistory.length,
+                    //    latestCoP: cop
+                    //});
                   
                     // Calculate velocities
                     const velocities = this.calculateVelocities(cop, timestamp);
-                    Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Calculated velocities:', velocities);
+                    //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Calculated velocities:', velocities);
                   
                 }
 
@@ -275,19 +289,19 @@ class DataProcessor {
                 // Calculate forces and update histories
                 const forces = this.calculateForces(readings);
                 this.updateForceHistory(forces, timestamp);
-                Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated force history');
+                //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated force history');
 
-                Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated histories', {
-                    dataHistoryLength: this.state.visualization.dataHistory.length,
-                    copHistoryLength: this.state.visualization.copHistory.length,
-                    forceHistoryLength: this.state.visualization.forceHistory.length
-                });
+                //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated histories', {
+                //    dataHistoryLength: this.state.visualization.dataHistory.length,
+                //    copHistoryLength: this.state.visualization.copHistory.length,
+                //    forceHistoryLength: this.state.visualization.forceHistory.length
+                //});
               
                 return { readings, cop, forces, timestamp };
             }
 
         } catch (error) {
-            Logger.log(CONFIG.DEBUG.ERROR, 'DataProcessor', 'Error processing frame:', error);
+            //Logger.log(CONFIG.DEBUG.ERROR, 'DataProcessor', 'Error processing frame:', error);
         }
       
         return null;      
@@ -323,7 +337,7 @@ class DataProcessor {
             return { readings, cop: copData };
             
         } catch (error) {
-            Logger.log(CONFIG.DEBUG.ERROR, 'DataProcessor', 'Error parsing data', error);
+            //Logger.log(CONFIG.DEBUG.ERROR, 'DataProcessor', 'Error parsing data', error);
             return { readings: [], cop: null };
         }
     }  //end of processFrame method of DataProcessor class
@@ -378,7 +392,7 @@ class DataProcessor {
             }
         };
 
-        Logger.log(CONFIG.DEBUG.CALIBRATION, 'Calibration', 'Calibration completed:', this.state.calibration.data);
+        //Logger.log(CONFIG.DEBUG.CALIBRATION, 'Calibration', 'Calibration completed:', this.state.calibration.data);
     }
   
     // Left/right foot split
@@ -462,10 +476,10 @@ class DataProcessor {
                 this.state.visualization.forceHistory.slice(-this.state.settings.copHistoryLength);
         }
 
-        Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated force history:', {
-            historyLength: this.state.visualization.forceHistory.length,
-            latestForces: forces
-        });
+        //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated force history:', {
+        //    historyLength: this.state.visualization.forceHistory.length,
+        //    latestForces: forces
+        //});
     }
     
     calculateVelocities(cop, timestamp) {
@@ -536,7 +550,7 @@ class DataProcessor {
             this.state.visualization.heatmapInstance.setData({ data: [] });
         }
         
-        Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'All data cleared');
+        Logger.updateConnectionInfo('All data cleared');
     }
   
 }  //end of class DataProcessor
@@ -548,7 +562,7 @@ class Visualizer {
   
     constructor(appState) {
         this.state = appState;
-        Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Initializing visualizer');
+        //Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Initializing visualizer');
         
         // --- PATCH: Add throttling variables for chart updates ---
         this.lastVelocityUpdate = 0;
@@ -561,9 +575,9 @@ class Visualizer {
         try{
             this.initializeHeatmap();
             this.initializeGraphs();
-            Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Visualization components initialized');
+            //Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Visualization components initialized');
         } catch (error) {
-            Logger.log(CONFIG.DEBUG.ERROR, 'Visualizer', 'Error initializing visualizer:', error);
+            //Logger.log(CONFIG.DEBUG.ERROR, 'Visualizer', 'Error initializing visualizer:', error);
         }
       
     }
@@ -576,10 +590,10 @@ class Visualizer {
             throw new Error('Required heatmap elements not found in DOM');
         }
         
-        Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Container dimensions:', {
-            width: container.offsetWidth,
-            height: container.offsetHeight
-        });
+        //Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Container dimensions:', {
+        //    width: container.offsetWidth,
+        //    height: container.offsetHeight
+        //});
         
         this.adjustContainerDimensions();
         
@@ -606,9 +620,9 @@ class Visualizer {
                 }
             });
             
-            Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Heatmap instance created');
+            Logger.updateConnectionInfo('Heatmap instance created');
         } catch (error) {
-            Logger.log(CONFIG.DEBUG.ERROR, 'Visualizer', 'Error creating heatmap instance:', error);
+            Logger.updateConnectionInfo('Error creating heatmap instance:', error);
             throw error;
         }
     }
@@ -723,7 +737,7 @@ class Visualizer {
         );
         this.forceGraphInitialized = true;      
         
-        Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'All graphs initialized');
+        //Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'All graphs initialized');
     }
     
     adjustContainerDimensions() {
@@ -761,18 +775,18 @@ class Visualizer {
         //if (!this.state.visualization.heatmapInstance || !data.readings.length) return;
         
         if (!this.state.visualization.heatmapInstance || !data?.readings?.length) {
-            Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Skipping heatmap update - missing data or instance');
+            //Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Skipping heatmap update - missing data or instance');
             return;
         }
       
         //console.log("Visualizer.updateHeatmap isPlayback:", this.state.isPlayback, this.state);
 
-        Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Updating heatmap with data:', data);
+        //Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Updating heatmap with data:', data);
         
         const container = document.getElementById('heatmap-container');
       
         if (!container) {
-            Logger.log(CONFIG.DEBUG.ERROR, 'Visualizer', 'Heatmap container not found');
+            //Logger.log(CONFIG.DEBUG.ERROR, 'Visualizer', 'Heatmap container not found');
             return;
         }
       
@@ -803,7 +817,7 @@ class Visualizer {
             };
         });
       
-        Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Processed heatmap data:', processedData);
+        //Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Processed heatmap data:', processedData);
         
         const dataMaxValue = Math.max(...processedData.map(d => d.value));
         
@@ -965,7 +979,7 @@ class Visualizer {
     updateCoPGraph() {
         const copHistory = this.state.visualization.copHistory;
         if (!copHistory || copHistory.length === 0) {
-            Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'No CoP history to display');
+            //Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'No CoP history to display');
             return;
         }
         const inchesPerSensorX = this.state.settings.matWidth / this.state.settings.sensorsX;
@@ -1227,13 +1241,12 @@ class Visualizer {
         const { left: leftFoot, right: rightFoot } = dataProcessor.getLeftRight(readings);
 
         // Value function
-        const useLinearFit = (typeof window.useLinearFit !== "undefined" ? window.useLinearFit : true);
-        const valueFunc = useLinearFit
-            ? (r) => r.value
-            : (r) => Math.pow(
+        //const useLinearFit = (typeof window.useLinearFit !== "undefined" ? window.useLinearFit : true);        
+        const useLinearFitFlag = window.useLinearFit;
+        
+        const valueFunc = useLinearFitFlag ? (r) => r.value : (r) => Math.pow(
                 (r.value / (settings.POWER_FIT_COEFFICIENT || 1390.2)),
-                1 / (settings.POWER_FIT_EXPONENT || 0.1549)
-            );
+                1 / (settings.POWER_FIT_EXPONENT || 0.1549));
 
         
         // Toe/heel split per foot (always use raw readings)
@@ -1346,7 +1359,7 @@ class Visualizer {
         document.getElementById('back-percentage').textContent = '0';
         document.getElementById('back-heel-percentage').textContent = 'Heel: 0%';
 
-        Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'All visualizations cleared');
+        //Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'All visualizations cleared');
       
     }
   
@@ -1389,24 +1402,27 @@ class BluetoothManager {
             this.state.bluetooth.device = device;
             this.state.dataBuffer = '';
             
-            Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 
-                `Connecting to device: ${device.name || 'Unnamed Device'} (Attempt ${retryCount + 1})`
-            );
+            //Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 
+            //    `Connecting to device: ${device.name || 'Unnamed Device'} (Attempt ${retryCount + 1})`
+            //);
+            
+            Logger.updateConnectionInfo(`Connecting to device: ${device.name || 'Unnamed Device'} (Attempt ${retryCount + 1})`);
             
             device.addEventListener('gattserverdisconnected', this.handleDisconnection.bind(this));
             
             const server = await device.gatt.connect();
-            Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'GATT server connected');
+            //Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'GATT server connected');
+            Logger.updateConnectionInfo('GATT server connected');
             
             // Try Microchip UART first, then Nordic UART
             let service;
             try {
                 service = await server.getPrimaryService(CONFIG.BLE.MICROCHIP_UART_SERVICE);
-                Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Connected using Microchip UART Service');
+                Logger.updateConnectionInfo('Connected using Microchip UART Service');
                 this.state.bluetooth.characteristic = await service.getCharacteristic(CONFIG.BLE.MICROCHIP_UART_TX);
             } catch {
                 service = await server.getPrimaryService(CONFIG.BLE.NORDIC_UART_SERVICE);
-                Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Connected using Nordic UART Service');
+                Logger.updateConnectionInfo('Connected using Nordic UART Service');
                 this.state.bluetooth.characteristic = await service.getCharacteristic(CONFIG.BLE.NORDIC_UART_TX);
             }
             
@@ -1420,18 +1436,17 @@ class BluetoothManager {
             device.autoReconnectEnabled = true;
             
             this.updateUIForConnection(true);
-            Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Notifications started - ready to receive data');
+            Logger.updateConnectionInfo('Notifications started - ready to receive data');
             
         } catch (error) {
-            Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', `Connection failed (Attempt ${retryCount + 1})`, error);
+            Logger.updateConnectionInfo(`Connection failed (Attempt ${retryCount + 1})`, error);
             
             if (retryCount < this.maxRetryAttempts) {
-                Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 
-                    `Retrying connection in ${this.retryDelay/1000} seconds...`
+                Logger.updateConnectionInfo(`Retrying connection in ${this.retryDelay/1000} seconds...`
                 );
                 setTimeout(() => this.connectToDevice(device, retryCount + 1), this.retryDelay);
             } else {
-                Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Maximum retry attempts reached');
+                Logger.updateConnectionInfo('Maximum retry attempts reached');
                 throw error;
             }
         }
@@ -1446,8 +1461,8 @@ class BluetoothManager {
       
         // Convert ArrayBuffer to regular array for logging
         const rawData = Array.from(event.target.value);
-        Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Raw data received as bytes:', rawData);
-        Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Decoded chunk:', chunk);
+        //Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Raw data received as bytes:', rawData);
+        //Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Decoded chunk:', chunk);
         
         this.state.dataBuffer += chunk;
         
@@ -1457,7 +1472,7 @@ class BluetoothManager {
             this.state.dataBuffer = this.state.dataBuffer.substring(newlineIndex + 1);
             
             //Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Complete frame extracted:', frame);
-            Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Frame extracted:', frame);          
+            //Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Frame extracted:', frame);          
             
             if (frame) {
                 try {
@@ -1465,10 +1480,10 @@ class BluetoothManager {
                     if (this.state.app && typeof this.state.app.processFrame === 'function') {
                         this.state.app.processFrame(frame);
                     } else {
-                        Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Invalid app reference or processFrame method');
+                        //Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Invalid app reference or processFrame method');
                     }
                 } catch (error) {
-                    Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Error processing frame:', error);
+                    //Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Error processing frame:', error);
                 }
             }          
           
@@ -1480,7 +1495,7 @@ class BluetoothManager {
         const device = event.target;
         
         if (device.autoReconnectEnabled) {
-            Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Device disconnected unexpectedly!');
+            Logger.updateConnectionInfo('Device disconnected unexpectedly!');
         }
         
         this.state.bluetooth.isConnected = false;
@@ -1490,12 +1505,12 @@ class BluetoothManager {
         this.updateUIForConnection(false);
         
         if (device.autoReconnectEnabled) {
-            Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Attempting to reconnect...');
+            Logger.updateConnectionInfo('Attempting to reconnect...');
             this.connectToDevice(device).catch(error => {
-                Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Auto-reconnect failed', error);
+                Logger.updateConnectionInfo('Auto-reconnect failed', error);
             });
         } else {
-            Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Device disconnected - scan to reconnect');
+            Logger.updateConnectionInfo('Device disconnected - scan to reconnect');
         }
     }
     
@@ -1505,7 +1520,7 @@ class BluetoothManager {
                 this.state.bluetooth.device.autoReconnectEnabled = false;
                 await this.state.bluetooth.device.gatt.disconnect();
                 
-                Logger.log(CONFIG.DEBUG.BASIC, 'Bluetooth', 'Device disconnected successfully');
+                Logger.updateConnectionInfo('Device disconnected successfully');
                 
                 this.state.bluetooth.isConnected = false;
                 this.state.bluetooth.characteristic = null;
@@ -1517,7 +1532,7 @@ class BluetoothManager {
             }
           
         } catch (error) {
-            Logger.log(CONFIG.DEBUG.ERROR, 'Bluetooth', 'Disconnect failed', error);
+            Logger.updateConnectionInfo('Disconnect failed', error);
             throw error;
         }
     }  //end of disconnect method of BluetoothManager class
@@ -1752,7 +1767,7 @@ class PlaybackManager {
         //console.log("PlaybackManager.initializePlayback window.app.state.isPlayback = " + window.app.state.isPlayback);
       
         if (!this.state.recording.playbackData?.length) {
-            Logger.log(CONFIG.DEBUG.ERROR, 'Playback', 'No recorded data to playback');
+            //Logger.log(CONFIG.DEBUG.ERROR, 'Playback', 'No recorded data to playback');
             return;
         }
 
@@ -2014,6 +2029,10 @@ class PlaybackManager {
 
         // Compute path length, avg/max speed, etc
         let pathLen = 0, maxSpeed = 0, xDist = 0, yDist = 0, totalTime = 0, speeds = [];
+    
+        let xMin = Infinity, xMax = -Infinity;
+        let yMin = Infinity, yMax = -Infinity;
+
         const inchesPerSensorX = this.state.settings.matWidth / this.state.settings.sensorsX;
         const inchesPerSensorY = this.state.settings.matHeight / this.state.settings.sensorsY;
 
@@ -2028,19 +2047,35 @@ class PlaybackManager {
                 maxSpeed = Math.max(maxSpeed, speed);
                 speeds.push(speed);
             }
+            
+            // Track min/max coordinates  (for x and y bounding box of CoP data)
+            xMin = Math.min(xMin, copHistory[i].x);
+            xMax = Math.max(xMax, copHistory[i].x);
+            yMin = Math.min(yMin, copHistory[i].y);
+            yMax = Math.max(yMax, copHistory[i].y);
+            
         }
-        // x/y overall
+      
+        // X dist. (lateral distance) and Y dist (heel-toe distance)
+          //the two below show the dist of the finish point from the start point... not quite what I want
         xDist = Math.abs((copHistory[copHistory.length - 1].x - copHistory[0].x) * inchesPerSensorX);
         yDist = Math.abs((copHistory[copHistory.length - 1].y - copHistory[0].y) * inchesPerSensorY);
+        
+        //I want the x and y bounding box for the CoP data
+        
         totalTime = (copHistory[copHistory.length - 1].timestamp - copHistory[0].timestamp) / 1000;
+        
+        
         const avgSpeed = speeds.length ? (speeds.reduce((a, b) => a + b, 0) / speeds.length) : 0;
 
         document.getElementById('pathDistance').textContent = pathLen.toFixed(2);
         document.getElementById('avgSpeed').textContent = avgSpeed.toFixed(2);
         document.getElementById('maxSpeed').textContent = maxSpeed.toFixed(2);
         document.getElementById('totalTime').textContent = totalTime.toFixed(2);
-        document.getElementById('xDistance').textContent = xDist.toFixed(2);
-        document.getElementById('yDistance').textContent = yDist.toFixed(2);
+        //document.getElementById('xDistance').textContent = xDist.toFixed(2);
+        document.getElementById('xDistance').textContent = (xMax - xMin).toFixed(2);
+        //document.getElementById('yDistance').textContent = yDist.toFixed(2);
+        document.getElementById('yDistance').textContent = (yMax - yMin).toFixed(2);
     }
 
     togglePlay() {
@@ -2158,9 +2193,9 @@ class PressureSensorApp {
             
             this.setupSettingsPanel();
             this.checkVisualizationStatus();
-            Logger.log(CONFIG.DEBUG.BASIC, 'App', 'Application initialized successfully');
+            //Logger.log(CONFIG.DEBUG.BASIC, 'App', 'Application initialized successfully');
         } catch (error) {
-            Logger.log(CONFIG.DEBUG.ERROR, 'App', 'Initialization failed', error);
+            //Logger.log(CONFIG.DEBUG.ERROR, 'App', 'Initialization failed', error);
         }
     }
   
@@ -2171,16 +2206,16 @@ class PressureSensorApp {
         const heatmapElement = document.getElementById('heatmap');
         const heatmapOverlay = document.getElementById('heatmap-overlay');
 
-        Logger.log(CONFIG.DEBUG.BASIC, 'App', 'Container dimensions:', {
-            width: heatmapContainer?.offsetWidth,
-            height: heatmapContainer?.offsetHeight
-        });
+        //Logger.log(CONFIG.DEBUG.BASIC, 'App', 'Container dimensions:', {
+        //    width: heatmapContainer?.offsetWidth,
+        //    height: heatmapContainer?.offsetHeight
+        //});
 
-        Logger.log(CONFIG.DEBUG.BASIC, 'App', 'Heatmap instance:', {
-            exists: !!this.state.visualization.heatmapInstance,
-            containerExists: !!heatmapElement,
-            overlayExists: !!heatmapOverlay
-        });
+        //Logger.log(CONFIG.DEBUG.BASIC, 'App', 'Heatmap instance:', {
+        //    exists: !!this.state.visualization.heatmapInstance,
+        //    containerExists: !!heatmapElement,
+        //    overlayExists: !!heatmapOverlay
+        //});
     }
     
     setupEventListeners() {
@@ -2242,7 +2277,11 @@ class PressureSensorApp {
             'maxOpacity',
             'minOpacity',
             'historyLength',
-            'copHistoryLength'
+            'copHistoryLength',
+            'copTriggerThreshold',
+            'swingDuration',
+            'stopTriggerThreshold',
+            'playbackSpeed'            
         ];
       
         SETTINGS_SLIDERS.forEach(setting => {
@@ -2272,6 +2311,15 @@ class PressureSensorApp {
 
         // Invert axes checkboxes
         ['invertX', 'invertY'].forEach(setting => {
+            const checkbox = document.getElementById(setting);
+            if (!checkbox) return;
+            checkbox.addEventListener('change', (e) => {
+                this.updateSettingAndVisuals(setting, e.target.checked);
+            });
+        });
+      
+        // Invert axes checkboxes  useFixedDurationStop   useMovementThresholdStop
+        ['useFixedDurationStop', 'useMovementThresholdStop'].forEach(setting => {
             const checkbox = document.getElementById(setting);
             if (!checkbox) return;
             checkbox.addEventListener('change', (e) => {
@@ -2322,6 +2370,9 @@ class PressureSensorApp {
                 // Fallthrough to update heatmap with history
             case 'historyLength':
             case 'copHistoryLength':
+            case 'swingDuration':
+            case 'stopTriggerThreshold':
+            case 'playbackSpeed':            
             case 'matWidth':
             case 'matHeight':
             case 'sensorsX':
@@ -2344,6 +2395,8 @@ class PressureSensorApp {
                 this.visualizer.updateVelocityGraph();
                 this.visualizer.updateForceGraph();
                 break;
+            case 'useFixedDurationStop':
+            case 'useMovementThresholdStop':
             case 'clearTime':
                 // No direct visualization update, but could reset timeout if needed
                 break;
