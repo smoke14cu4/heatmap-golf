@@ -96,8 +96,40 @@ const Utils = {
     
     formatTimestamp(ms) {
         return (ms / 1000).toFixed(3);
+    },
+  
+    // --- NEW: Left/Right split based on X inversion ---
+    splitLeftRight(readings, xMid, invertX) {
+        if (invertX) {
+            return {
+                left: readings.filter(r => r.x > xMid),
+                right: readings.filter(r => r.x <= xMid)
+            };
+        } else {
+            return {
+                left: readings.filter(r => r.x <= xMid),
+                right: readings.filter(r => r.x > xMid)
+            };
+        }
+    },
+    
+    // --- NEW: Toe/Heel split based on Y inversion ---
+    splitToeHeel(footReadings, yMid, invertY) {
+        if (invertY) {
+            return {
+                toe: footReadings.filter(r => r.y <= yMid),
+                heel: footReadings.filter(r => r.y > yMid)
+            };
+        } else {
+            return {
+                toe: footReadings.filter(r => r.y > yMid),
+                heel: footReadings.filter(r => r.y <= yMid)
+            };
+        }
     }
+  
 };
+
 
 // Logger Class
 class Logger {
@@ -395,6 +427,31 @@ class DataProcessor {
         Logger.log(CONFIG.DEBUG.CALIBRATION, 'Calibration', 'Calibration completed:', this.state.calibration.data);
     }
     
+  
+    // Left/right foot split
+    // Returns { left, right } arrays according to inversion and calibration/setting
+    getLeftRight(readings) {
+        const method = this.state.app.state.weightDistMethod || 'perFrame';
+        let xMid, invertX = this.state.settings.invertX;
+        if (method === 'calibrated' && this.state.calibration.data) {
+            xMid = this.state.calibration.data.xRange.mid;
+        } else {
+            const xVals = readings.map(r => r.x);
+            xMid = Math.min(...xVals) + (Math.max(...xVals) - Math.min(...xVals)) / 2;
+        }
+        return Utils.splitLeftRight(readings, xMid, invertX);
+    }
+  
+    // Toe/heel split (used for one foot at a time)
+    getToeHeel(footReadings) {
+        if (!footReadings.length) return { toe: [], heel: [] };
+        const yVals = footReadings.map(r => r.y);
+        const yMid = Math.min(...yVals) + (Math.max(...yVals) - Math.min(...yVals)) / 2;
+        const invertY = this.state.settings.invertY;
+        return Utils.splitToeHeel(footReadings, yMid, invertY);
+    }
+  
+  
     updateDataHistory(readings, timestamp) {
         this.state.visualization.dataHistory.push({
             timestamp,
@@ -488,6 +545,23 @@ class DataProcessor {
     }
     
     calculateForces(readings) {
+        const { left: leftFoot, right: rightFoot } = this.getLeftRight(readings);
+        let totalPressure, leftPressure, rightPressure;
+        if (useLinearFit) {
+            totalPressure = readings.reduce((sum, r) => sum + r.value, 0);
+            leftPressure = leftFoot.reduce((sum, r) => sum + r.value, 0);
+            rightPressure = rightFoot.reduce((sum, r) => sum + r.value, 0);
+        } else {
+            totalPressure = readings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+            leftPressure = leftFoot.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+            rightPressure = rightFoot.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+        }
+        return { total: totalPressure, left: leftPressure, right: rightPressure };
+    }
+  
+    //before determining left/right and heel/toe taking into account inversion settings
+    /*
+    calculateForces(readings) {
         //const method = document.querySelector('input[name="weightDistMethod"]:checked').value;
         const method = this.state.app.state.weightDistMethod || 'perFrame';
       
@@ -538,7 +612,8 @@ class DataProcessor {
         
         return { total: totalPressure, left: leftPressure, right: rightPressure };
     }
-    
+    */
+
     clearData() {
         this.state.visualization.dataHistory = [];
         this.state.visualization.copHistory = [];
@@ -892,7 +967,7 @@ class Visualizer {
       
         //skip inversion/scaling if playback
         const isPlayback = this.state.isPlayback;
-        console.log("Visualizer.updateHeatmap isPlayback = " + isPlayback);
+        //console.log("Visualizer.updateHeatmap isPlayback = " + isPlayback);
         const processedData = data.readings.map(reading => {
             let x = reading.x;
             let y = reading.y;
@@ -997,7 +1072,7 @@ class Visualizer {
         });
         */
       
-        console.log("Visualizer.drawCoPPath isPlayback = " + isPlayback);
+        //console.log("Visualizer.drawCoPPath isPlayback = " + isPlayback);
       
         copHistory.forEach((point, index) => {
             let x = point.x;
@@ -1033,7 +1108,7 @@ class Visualizer {
         }
         */
       
-        console.log("Visualizer.drawCurrentCoP this.state.isPlayback = " + this.state.isPlayback);
+        //console.log("Visualizer.drawCurrentCoP this.state.isPlayback = " + this.state.isPlayback);
       
         if (!this.state.isPlayback) {
             if (this.state.settings.invertX) {
@@ -1092,7 +1167,7 @@ class Visualizer {
       
         const isPlayback = this.state.isPlayback;
       
-        console.log("Visualizer.updateRawDataLive isPlayback = " + isPlayback);
+        //console.log("Visualizer.updateRawDataLive isPlayback = " + isPlayback);
       
         const adjustedReadings = readings.map(reading => ({
             adjustedX: isPlayback ? reading.x : (settings.invertX ? (settings.sensorsX - reading.x) : reading.x),
@@ -1128,6 +1203,9 @@ class Visualizer {
       
     }
     
+  
+    //before taking into account inversion settings for determining left/right and heel/toe 
+    /*
     updateCoPGraph() {
         const copHistory = this.state.visualization.copHistory;
         //if (!copHistory.length) return;
@@ -1172,34 +1250,10 @@ class Visualizer {
             type: 'scattergl',  //uses WebGL to use GPU for higher performance
             marker: { color: 'blue', size: 6 }
         };
-        
-        /*
-        const layout = {
-            title: title,
-            xaxis: {
-                title: xAxisTitle,
-                autorange: true,
-                tickformat: '0.2f',
-                nticks: 10,
-                exponentformat: 'none',
-                showexponent: 'none'
-            },
-            yaxis: {
-                title: yAxisTitle,
-                autorange: true,
-                tickformat: '0.2f',
-                nticks: 10,
-                exponentformat: 'none',
-                showexponent: 'none'
-            }
-        };
-        */
-      
       
         //using getOverlayLayout to overlay most of graph info including titles and axes labels
         const layout = this.getOverlayLayout(title, xAxisTitle, yAxisTitle, false);
-      
-        
+              
         //Plotly.newPlot('cop-graph', [trace], layout);
         
         if (this.coPGraphInitialized) {
@@ -1207,11 +1261,67 @@ class Visualizer {
         } else {
             Plotly.newPlot('cop-graph', [trace], layout);
             this.coPGraphInitialized = true;
-        }
-      
+        }      
       
     }
+    */
     
+    updateCoPGraph() {
+        const copHistory = this.state.visualization.copHistory;
+        if (!copHistory || copHistory.length === 0) {
+            Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'No CoP history to display');
+            return;
+        }
+        const inchesPerSensorX = this.state.settings.matWidth / this.state.settings.sensorsX;
+        const inchesPerSensorY = this.state.settings.matHeight / this.state.settings.sensorsY;
+
+        const copMode = this.state.app.state.copMode || 'normal';
+        const isPlayback = this.state.isPlayback;
+        const invertX = this.state.settings.invertX;
+        const invertY = this.state.settings.invertY;
+        const sensorsX = this.state.settings.sensorsX;
+        const sensorsY = this.state.settings.sensorsY;
+
+        let xValues, yValues, title, xAxisTitle, yAxisTitle;
+
+        if (copMode === 'normal') {
+            xValues = copHistory.map(point => this.getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback).x);
+            yValues = copHistory.map(point => this.getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback).y);
+            title = 'Center of Pressure (CoP) Graph';
+            xAxisTitle = 'X Position (coordinate)';
+            yAxisTitle = 'Y Position (coordinate)';
+        } else {
+            // Delta mode
+            const basePoint = this.getInvertedCoPCoords(copHistory[0], invertX, invertY, sensorsX, sensorsY, isPlayback);
+            xValues = copHistory.map(point =>
+                (this.getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback).x - basePoint.x) * inchesPerSensorX
+            );
+            yValues = copHistory.map(point =>
+                (this.getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback).y - basePoint.y) * inchesPerSensorY
+            );
+            title = 'Center of Pressure (CoP) Delta';
+            xAxisTitle = 'X Delta (inches)';
+            yAxisTitle = 'Y Delta (inches)';
+        }
+
+        const trace = {
+            x: xValues,
+            y: yValues,
+            mode: 'lines+markers',
+            type: 'scattergl',
+            marker: { color: 'blue', size: 6 }
+        };
+
+        const layout = this.getOverlayLayout(title, xAxisTitle, yAxisTitle, false);
+
+        if (this.coPGraphInitialized) {
+            Plotly.react('cop-graph', [trace], layout);
+        } else {
+            Plotly.newPlot('cop-graph', [trace], layout);
+            this.coPGraphInitialized = true;
+        }
+    }  
+  
     updateVelocityGraph() {
         
         const now = Date.now();
@@ -1407,8 +1517,10 @@ class Visualizer {
         }
         
     }
+            
     
-        
+    //before taking into account inversion settings for determining left/right and heel/toe 
+    /*
     updatePressureDistributionLive(readings, cop, settings, dataProcessor) {
         if (!readings || readings.length === 0) return;
 
@@ -1420,17 +1532,8 @@ class Visualizer {
         const right = forces.right;
         if (total === 0) return;
 
-        // 2. Adjust readings for inversion for further splitting
+        // 2. Adjust readings for inversion for further splitting       
         
-        /*
-        //before adding flag to allow skipping inversion/scaling if playback
-        const adjustedReadings = readings.map(r => ({
-            ...r,
-            x: settings.invertX ? (settings.sensorsX - r.x) : r.x,
-            y: settings.invertY ? (settings.sensorsY - r.y) : r.y,
-            value: r.value
-        }));
-        */
       
         const isPlayback = this.state.isPlayback;
         // Use unmodified readings if playback, otherwise invert
@@ -1507,7 +1610,99 @@ class Visualizer {
         document.getElementById('back-toe-percentage').textContent = `Toe: ${rightTH.toString ? rightTH.toe : rightTH.toe}%`;
         document.getElementById('back-heel-percentage').textContent = `Heel: ${rightTH.toString ? rightTH.heel : rightTH.heel}%`;
     }
-  
+    */
+    
+    
+    
+    // Helper for inverting for display (not for logic/splits)
+    _invertForDisplay(r, settings, isPlayback) {
+        if (isPlayback) return r;
+        return {
+            ...r,
+            x: settings.invertX ? (settings.sensorsX - r.x) : r.x,
+            y: settings.invertY ? (settings.sensorsY - r.y) : r.y,
+        };
+    }
+    
+    
+    
+    updatePressureDistributionLive(readings, cop, settings, dataProcessor) {
+        if (!readings || readings.length === 0) return;
+
+        /*
+        //only do inversions for displayed data / visualizations... not for logic splits
+        const isPlayback = this.state.isPlayback;
+        const adjReadings = isPlayback ? readings : readings.map(r => ({
+            ...r,
+            x: settings.invertX ? (settings.sensorsX - r.x) : r.x,
+            y: settings.invertY ? (settings.sensorsY - r.y) : r.y,
+            value: r.value
+        }));
+        */
+
+      
+        // --- LOGIC SPLITS: always use raw readings ---
+          // Use DataProcessor logic for left/right split        
+        //const { left: leftFoot, right: rightFoot } = dataProcessor.getLeftRight(adjReadings);  //this did double inversion
+        const { left: leftFoot, right: rightFoot } = dataProcessor.getLeftRight(readings);
+
+        // Value function
+        const useLinearFit = (typeof window.useLinearFit !== "undefined" ? window.useLinearFit : true);
+        const valueFunc = useLinearFit
+            ? (r) => r.value
+            : (r) => Math.pow(
+                (r.value / (settings.POWER_FIT_COEFFICIENT || 1390.2)),
+                1 / (settings.POWER_FIT_EXPONENT || 0.1549)
+            );
+
+        
+        // Toe/heel split per foot (always use raw readings)
+          // Toe/heel split using DataProcessor method
+        function toeHeelPerc(footReadings) {
+            if (!footReadings.length) return { toe: 0, heel: 0 };
+            const { toe, heel } = dataProcessor.getToeHeel(footReadings);
+            const toeSum = toe.reduce((sum, r) => sum + valueFunc(r), 0);
+            const heelSum = heel.reduce((sum, r) => sum + valueFunc(r), 0);
+            const footTotal = footReadings.reduce((sum, r) => sum + valueFunc(r), 0);
+            return {
+                toe: footTotal ? ((toeSum / footTotal) * 100).toFixed(1) : "0.0",
+                heel: footTotal ? ((heelSum / footTotal) * 100).toFixed(1) : "0.0"
+            };
+        }
+      
+        // Forces are always calculated using raw readings
+        const forces = dataProcessor.calculateForces(readings);
+        const total = forces.total;
+
+        const leftTotal = leftFoot.reduce((sum, r) => sum + valueFunc(r), 0);
+        const rightTotal = rightFoot.reduce((sum, r) => sum + valueFunc(r), 0);
+
+        const leftPercent = total ? ((leftTotal / total) * 100).toFixed(1) : "0.0";
+        const rightPercent = total ? ((rightTotal / total) * 100).toFixed(1) : "0.0";
+
+        document.getElementById('front-percentage').textContent = leftPercent;
+        document.getElementById('back-percentage').textContent = rightPercent;
+
+        // Per-foot toe/heel
+        const leftTH = toeHeelPerc(leftFoot);
+        const rightTH = toeHeelPerc(rightFoot);
+
+        document.getElementById('front-toe-percentage').textContent = `Toe: ${leftTH.toe}%`;
+        document.getElementById('front-heel-percentage').textContent = `Heel: ${leftTH.heel}%`;
+        document.getElementById('back-toe-percentage').textContent = `Toe: ${rightTH.toe}%`;
+        document.getElementById('back-heel-percentage').textContent = `Heel: ${rightTH.heel}%`;
+    }
+
+    // --- Encapsulate CoP coordinate inversion ---
+    getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback) {
+        if (isPlayback) return { x: point.x, y: point.y };
+        return {
+            x: invertX ? (sensorsX - point.x) : point.x,
+            y: invertY ? (sensorsY - point.y) : point.y
+        };
+    }
+    
+    
     clearAll() {
         // Clear heatmap data
         if (this.state.visualization.heatmapInstance) {
@@ -2246,8 +2441,7 @@ class PlaybackManager {
         // 1. Prepare playback history arrays for visualizations
         // These arrays are already adjusted for inversion/scaling in recording, so pass as-is.
         const startTime = this.state.recording.playbackData[0].timestamp;
-        
-        
+                
 
         // Build CoP history up to this frame for CoP path drawing (and velocity)
         const copHistory = this.state.recording.playbackData.slice(0, frameIndex + 1)
@@ -2304,8 +2498,15 @@ class PlaybackManager {
                 const xVals = readings.map(r => r.x);
                 const minX = Math.min(...xVals), maxX = Math.max(...xVals);
                 const xMid = minX + (maxX - minX) / 2;
-                let leftFoot = readings.filter(r => r.x <= xMid);
-                let rightFoot = readings.filter(r => r.x > xMid);
+              
+                //this didn't take into account the invertX setting when determining leftFoot and rightFoot
+                //let leftFoot = readings.filter(r => r.x <= xMid);
+                //let rightFoot = readings.filter(r => r.x > xMid);
+                
+                //still run the readings thru the Utils.splitLeftRight to determine which is left and which is right based on inversion
+                  // Always use invertX = false here because playback data is already in display-space
+                const { left: leftFoot, right: rightFoot } = Utils.splitLeftRight(readings, xMid, false);
+              
                 let total = readings.reduce((sum, r) => sum + r.value, 0);
                 let left = leftFoot.reduce((sum, r) => sum + r.value, 0);
                 let right = rightFoot.reduce((sum, r) => sum + r.value, 0);
