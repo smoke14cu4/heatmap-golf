@@ -2,13 +2,16 @@
  * Pressure Sensor Visualization Application
  * Version: 2.0.0
  * Author: smoke14cu4
- * Last Updated: 04-22-2025 
+ * Last Updated: 04-26-2025 
  */
 
 
 //let useLinearFit = true;  //set to true to use linear fit for weight calcs  //set to false to use power fit
-var useLinearFit = true;  //set to true to use linear fit for weight calcs  //set to false to use power fit
 
+var useLinearFit = true;  //set to true to use linear fit for weight calcs  //set to false to use power fitforceHistory
+//var useLinearFit = false;  //set to true to use linear fit for weight calcs  //set to false to use power fitforceHistory
+
+var debug = 0;  //0 to disable  //2 is for useLinearFit debugging  //3 is for midpoint calculations display
 
 // Configuration
 const CONFIG = {
@@ -215,6 +218,11 @@ class AppState {
             startTime: null,
             data: null
         };
+        this.latestMidpoints = {
+            xMid: null,         // from getLeftRight
+            yMidLeft: null,     // from getToeHeel on left foot
+            yMidRight: null     // from getToeHeel on right foot
+        };
         this.dataBuffer = '';
         this.clearTimeout = null;
         this.isPlayback = false; 
@@ -391,6 +399,13 @@ class DataProcessor {
                 mid: (Math.min(...yValues) + Math.max(...yValues)) / 2
             }
         };
+        
+        if (debug == 3) {
+            //console.log("DataProcessor.completeCalibration xRange:", xRange);
+            console.log("DataProcessor.completeCalibration xRange:", this.state.calibration.data.xRange);
+            //console.log("DataProcessor.completeCalibration yRange:", yRange);
+            console.log("DataProcessor.completeCalibration yRange:", this.state.calibration.data.yRange);
+        }
 
         //Logger.log(CONFIG.DEBUG.CALIBRATION, 'Calibration', 'Calibration completed:', this.state.calibration.data);
     }
@@ -402,14 +417,25 @@ class DataProcessor {
         const isPlayback = window.app.state.isPlayback;
         const method = this.state.app.state.weightDistMethod || 'perFrame';
         let xMid, invertX = this.state.settings.invertX;
+        
         if (method === 'calibrated' && this.state.calibration.data) {
             xMid = this.state.calibration.data.xRange.mid;
         } else {
             const xVals = readings.map(r => r.x);
-            xMid = Math.min(...xVals) + (Math.max(...xVals) - Math.min(...xVals)) / 2;
+            xMid = Math.min(...xVals) + ((Math.max(...xVals) - Math.min(...xVals)) / 2);
         }
+        
+        //if (this.state.settings.invertX) {
+        //    xMid = this.state.settings.sensorsX - xMid;
+        //}
+        
+        // Store xMid for use elsewhere
+        this.state.latestMidpoints.xMid = xMid;
+      
+        if (debug == 3) console.log("DataProcessor.getLeftRight xMid:", xMid);
+      
         if (isPlayback) {
-            return Utils.splitLeftRight(readings, xMid, false); //don't apply any inversion here during playback        
+            return Utils.splitLeftRight(readings, xMid, false); //don't apply any inversion here during playback            
         }
         else {
             return Utils.splitLeftRight(readings, xMid, invertX);
@@ -418,13 +444,29 @@ class DataProcessor {
     }
   
     // Toe/heel split (used for one foot at a time)
-    getToeHeel(footReadings) {
+    //getToeHeel(footReadings) {
+    getToeHeel(footReadings, footLabel = "left") {
         //const isPlayback = this.state.isPlayback;
         const isPlayback = window.app.state.isPlayback;
         if (!footReadings.length) return { toe: [], heel: [] };
         const yVals = footReadings.map(r => r.y);
         const yMid = Math.min(...yVals) + (Math.max(...yVals) - Math.min(...yVals)) / 2;
+        
+        //if (!this.state.settings.invertY) {
+        //    yMid = this.state.settings.sensorsY - yMid;
+        //}
+        
+        // Store yMid for left/right foot
+        if (footLabel === "left") {
+            this.state.latestMidpoints.yMidLeft = yMid;
+        } else if (footLabel === "right") {
+            this.state.latestMidpoints.yMidRight = yMid;
+        }
+        
+        if (debug == 3) console.log("DataProcessor.getToeHeel yMid:", yMid);
+        
         const invertY = this.state.settings.invertY;
+      
         if (isPlayback) {
             return Utils.splitToeHeel(footReadings, yMid, false);  //don't apply any inversion here during playback
         }
@@ -537,6 +579,14 @@ class DataProcessor {
             leftPressure = leftFoot.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
             rightPressure = rightFoot.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
         }
+        
+        //Logger.log(CONFIG.DEBUG.WEIGHT_CALC, 'DataProcessor.calculateForces', 'Initializing visualizer');        
+        if (debug == 2) {
+            console.log("DataProcessor.calculateForces totalPressure:", totalPressure);
+            console.log("DataProcessor.calculateForces leftPressure:", leftPressure);
+            console.log("DataProcessor.calculateForces rightPressure:", rightPressure);
+        }
+        
         return { total: totalPressure, left: leftPressure, right: rightPressure };
     }
 
@@ -802,13 +852,18 @@ class Visualizer {
         const processedData = data.readings.map(reading => {
             let x = reading.x;
             let y = reading.y;
-            if (!isPlayback) {
+            if (!isPlayback) {  //NOT playback data
                 if (this.state.settings.invertX) {
                   x = this.state.settings.sensorsX - x;
                 }
                 if (!this.state.settings.invertY) {
                   y = this.state.settings.sensorsY - y;
                 }
+            }
+            else {  //it IS playback data
+                //pressure data has already been properly inverted... but that's for cartesian
+                  //so for heatmap display, need to convert to screen coordinates (i.e. invert y again)
+                y = this.state.settings.sensorsY - y; 
             }
             return {
                 x: x * scaleX,
@@ -885,7 +940,7 @@ class Visualizer {
         copHistory.forEach((point, index) => {
             let x = point.x;
             let y = point.y;
-            if (!isPlayback) {
+            if (!isPlayback) {  //NOT playback data
                 if (this.state.settings.invertX) {
                   x = this.state.settings.sensorsX - x;
                 }
@@ -893,6 +948,12 @@ class Visualizer {
                   y = this.state.settings.sensorsY - y;
                 }
             }
+            else {  //it IS playback data
+                //CoP data has already been properly inverted... but that's for cartesian
+                  //so for heatmap display, need to convert to screen coordinates (i.e. invert y again)
+                y = this.state.settings.sensorsY - y;
+            }
+          
             const xScaled = (x * canvas.width) / this.state.settings.sensorsX;
             const yScaled = (y * canvas.height) / this.state.settings.sensorsY;
             if (index === 0) ctx.moveTo(xScaled, yScaled);
@@ -909,13 +970,18 @@ class Visualizer {
         //console.log("Visualizer.drawCurrentCoP this.state.isPlayback = " + window.app.state.isPlayback);
       
         //if (!this.state.isPlayback) {
-        if (!window.app.state.isPlayback) {  
+        if (!window.app.state.isPlayback) {   //NOT playback data 
             if (this.state.settings.invertX) {
               x = this.state.settings.sensorsX - x;
             }
             if (!this.state.settings.invertY) {
               y = this.state.settings.sensorsY - y;
             }
+        }
+        else {  //it IS playback data            
+            //pressure data has already been properly inverted... but that's for cartesian
+              //so for heatmap display, need to convert to screen coordinates (i.e. invert y again)
+            y = this.state.settings.sensorsY - y;
         }
         
         const xScaled = (x * canvas.width) / this.state.settings.sensorsX;
@@ -975,6 +1041,21 @@ class Visualizer {
         `;
       
     }
+    
+    // --- Encapsulate CoP coordinate inversion ---
+    getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback) {
+        if (isPlayback) return { x: point.x, y: point.y };
+        return {
+            x: invertX ? (sensorsX - point.x) : point.x,
+            y: invertY ? (sensorsY - point.y) : point.y
+        };
+    }
+    
+    getStanceMidpoints() {
+        const { xMid, yMidLeft, yMidRight } = this.state.latestMidpoints;
+        const avgYMid = (yMidLeft + yMidRight) / 2;
+        return { xMid, avgYMid };
+    }
   
     updateCoPGraph() {
         const copHistory = this.state.visualization.copHistory;
@@ -984,7 +1065,6 @@ class Visualizer {
         }
         const inchesPerSensorX = this.state.settings.matWidth / this.state.settings.sensorsX;
         const inchesPerSensorY = this.state.settings.matHeight / this.state.settings.sensorsY;
-
         const copMode = this.state.app.state.copMode || 'normal';
         //const isPlayback = this.state.isPlayback;
         const isPlayback = window.app.state.isPlayback;
@@ -993,25 +1073,49 @@ class Visualizer {
         const sensorsX = this.state.settings.sensorsX;
         const sensorsY = this.state.settings.sensorsY;
         
+        //const { xMid, avgYMid } = this.getStanceMidpoints();
+        let { xMid, avgYMid } = this.getStanceMidpoints();
+      
+        //apply inversions to Xmid and avgYMid taking into account whether playback or not
+        if (!isPlayback) {   //NOT playback data 
+            if (invertX) {
+              xMid = sensorsX - xMid;
+            }
+            if (invertY) {
+              avgYMid = sensorsY - avgYMid;
+            }
+        }
+        
+        if (debug == 3) {
+            console.log("Visualizer.updateCoPGraph corrected xMid:", xMid);
+            console.log("Visualizer.updateCoPGraph corrected avgYMid:", avgYMid);          
+        }
+        
         //console.log("Visualizer.updateCoPGraph isPlayback = " + isPlayback);
 
         let xValues, yValues, title, xAxisTitle, yAxisTitle;
 
         if (copMode === 'normal') {
-            xValues = copHistory.map(point => this.getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback).x);
-            yValues = copHistory.map(point => this.getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback).y);
+              // Lateral (X): negative is right foot, positive is left foot (reverse sign)
+              // Heel-Toe (Y): positive towards toe, negative towards heel
+            
+            //xValues = copHistory.map(point => this.getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback).x);
+            //yValues = copHistory.map(point => this.getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback).y);            
+            xValues = copHistory.map(point => -(this.getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback).x - xMid) * inchesPerSensorX);
+            yValues = copHistory.map(point => (this.getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback).y - avgYMid) * inchesPerSensorY);
+            
             title = 'Center of Pressure (CoP) Graph';
-            xAxisTitle = 'X Position (coordinate)';
-            yAxisTitle = 'Y Position (coordinate)';
+            //xAxisTitle = 'X Position (coordinate)';
+            //yAxisTitle = 'Y Position (coordinate)';
+            xAxisTitle = 'Lateral (inches)';
+            yAxisTitle = 'Heel-Toe (inches)';
         } else {
             // Delta mode
             const basePoint = this.getInvertedCoPCoords(copHistory[0], invertX, invertY, sensorsX, sensorsY, isPlayback);
             xValues = copHistory.map(point =>
-                (this.getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback).x - basePoint.x) * inchesPerSensorX
-            );
+                (this.getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback).x - basePoint.x) * inchesPerSensorX);
             yValues = copHistory.map(point =>
-                (this.getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback).y - basePoint.y) * inchesPerSensorY
-            );
+                (this.getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback).y - basePoint.y) * inchesPerSensorY);
             title = 'Center of Pressure (CoP) Delta';
             xAxisTitle = 'X Delta (inches)';
             yAxisTitle = 'Y Delta (inches)';
@@ -1025,8 +1129,11 @@ class Visualizer {
             marker: { color: 'blue', size: 6 }
         };
 
-        const layout = this.getOverlayLayout(title, xAxisTitle, yAxisTitle, false);
-
+        const layout = this.getOverlayLayout(title, xAxisTitle, yAxisTitle, false);      
+        if (copMode === 'normal') {
+            layout.xaxis.autorange = 'reversed';          
+        }
+        
         if (this.coPGraphInitialized) {
             Plotly.react('cop-graph', [trace], layout);
         } else {
@@ -1053,10 +1160,24 @@ class Visualizer {
             (point.timestamp - mostRecentTime) / 1000
         );
         
+        // For "normal" mode, lateral (vx) should be NEGATIVE for rightward movement, POSITIVE for leftward
+        // So, reverse the sign of vx
+        const copMode = this.state.app.state.copMode || 'normal';
+        
+        let lateralVel, heelToeVel;
+        if (copMode === 'normal') {
+            lateralVel = velocityHistory.map(point => -point.vx);
+            heelToeVel = velocityHistory.map(point => point.vy);
+        } else {
+            lateralVel = velocityHistory.map(point => point.vx);
+            heelToeVel = velocityHistory.map(point => point.vy);
+        }
+        
         const traces = [
             {
                 x: times,
-                y: velocityHistory.map(point => point.vx),
+                //y: velocityHistory.map(point => point.vx),
+                y: lateralVel,
                 mode: 'lines+markers',
                 type: 'scattergl',  //uses WebGL to use GPU for higher performance
                 //name: 'Lateral Velocity',
@@ -1066,7 +1187,8 @@ class Visualizer {
             },
             {
                 x: times,
-                y: velocityHistory.map(point => point.vy),
+                //y: velocityHistory.map(point => point.vy),
+                y: heelToeVel,
                 mode: 'lines+markers',
                 type: 'scattergl',  //uses WebGL to use GPU for higher performance
                 //name: 'Heel-Toe Velocity',
@@ -1115,9 +1237,34 @@ class Visualizer {
         const referenceForce = this.state.recording.staticForceReference || 
                              forceHistory[0].total;
         
+        if (debug == 2) {
+            console.log("Visualizer.updateForceGraph - forceHistory:", forceHistory);
+            console.log("Visualizer.updateForceGraph - referenceForce:", referenceForce);
+        }
+      
+        
         //moved to global //const useLinearFit = true; // Could be made configurable
         
         let leftForces, rightForces, totalForces;
+        
+        //this logic needs to be re-done.  leftForces and rightForces should do point.left/referenceForce..I think
+          //doing point.left/point.total simply gives the per-frame percentage of left (and right) force
+              //which is what want for mostly static forces, but when there's dynamic conditions, the
+              //left+right force might go over 100%... meaning that the push off of the left foot's force
+              // plus the weight support of the right foot force could equal more than body weight
+              //since static left + right foot force should always equal body weight
+            //this is especially the case for the power-fit calculation of total force below...
+    
+      
+        //totalForces should just be leftForces + rightForces
+      
+        //combine the calculatiions being done (like did with mid points), by exposing 
+          //leftPressure, rightPressure, and totalPressure from DataProcessor.calculateForces. left, right, total
+            //this way, the userLinearFit or power fit is already accounted for.
+            
+          //except, don't combine if change the way of left/total yada yada, but still calculate like do
+            //in DataProcessor.calculateForces (where call the util helper function for power calculations)  
+    
         
         //if (window.useLinearFit) {
         if (useLinearFit) {
@@ -1153,6 +1300,8 @@ class Visualizer {
                 );
                 return totalPower !== 0 ? (rightPower / totalPower) * 100 : 0;
             });
+            
+            //this is not a very good way to calculate... if not just flat out wrong!!!
             totalForces = forceHistory.map(point => {
                 const totalPower = Math.pow(
                     (point.total / CONFIG.CALIBRATION.POWER_FIT_COEFFICIENT),
@@ -1163,8 +1312,14 @@ class Visualizer {
                     1 / CONFIG.CALIBRATION.POWER_FIT_EXPONENT
                 );
                 return refPower !== 0 ? (totalPower / refPower) * 100 : 0;
-            });          
-          
+            });
+            
+            if (debug == 2) {
+                console.log("Visualizer.updateForceGraph - leftForces:", leftForces);
+                console.log("Visualizer.updateForceGraph - rightForces:", rightForces);
+                console.log("Visualizer.updateForceGraph - totalForces:", totalForces);
+            }            
+            
         }
         
         const traces = [
@@ -1251,9 +1406,12 @@ class Visualizer {
         
         // Toe/heel split per foot (always use raw readings)
           // Toe/heel split using DataProcessor method
-        function toeHeelPerc(footReadings) {
+        //function toeHeelPerc(footReadings) {
+        function toeHeelPerc(footReadings, footLabel = "left") {
             if (!footReadings.length) return { toe: 0, heel: 0 };
-            const { toe, heel } = dataProcessor.getToeHeel(footReadings);
+            //const { toe, heel } = dataProcessor.getToeHeel(footReadings);
+            const { toe, heel } = dataProcessor.getToeHeel(footReadings, footLabel);
+          
             const toeSum = toe.reduce((sum, r) => sum + valueFunc(r), 0);
             const heelSum = heel.reduce((sum, r) => sum + valueFunc(r), 0);
             const footTotal = footReadings.reduce((sum, r) => sum + valueFunc(r), 0);
@@ -1277,8 +1435,10 @@ class Visualizer {
         document.getElementById('back-percentage').textContent = rightPercent;
 
         // Per-foot toe/heel
-        const leftTH = toeHeelPerc(leftFoot);
-        const rightTH = toeHeelPerc(rightFoot);
+        //const leftTH = toeHeelPerc(leftFoot);
+        const leftTH = toeHeelPerc(leftFoot, "left");        
+        //const rightTH = toeHeelPerc(rightFoot);
+        const rightTH = toeHeelPerc(rightFoot, "right");
 
         document.getElementById('front-toe-percentage').textContent = `Toe: ${leftTH.toe}%`;
         document.getElementById('front-heel-percentage').textContent = `Heel: ${leftTH.heel}%`;
@@ -1286,14 +1446,7 @@ class Visualizer {
         document.getElementById('back-heel-percentage').textContent = `Heel: ${rightTH.heel}%`;
     }
 
-    // --- Encapsulate CoP coordinate inversion ---
-    getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback) {
-        if (isPlayback) return { x: point.x, y: point.y };
-        return {
-            x: invertX ? (sensorsX - point.x) : point.x,
-            y: invertY ? (sensorsY - point.y) : point.y
-        };
-    }    
+    
     
     clearAll() {
         // Clear heatmap data
@@ -1917,11 +2070,24 @@ class PlaybackManager {
       
         // 5. Update velocity graph
         //this.state.app.visualizer.updateVelocityGraph();
+        
+        const copMode = this.state.app.state.copMode || 'normal';
+      
+        let lateralVel, heelToeVel;
+        if (copMode === 'normal') {
+            lateralVel = velocityHistory.map(point => -point.vx);
+            heelToeVel = velocityHistory.map(point => point.vy);
+        } else {
+            lateralVel = velocityHistory.map(point => point.vx);
+            heelToeVel = velocityHistory.map(point => point.vy);
+        }  
+      
         // Update velocity graph with modified layout
         const velocityTraces = [
             {
                 x: velocityHistory.map(point => (point.timestamp - startTime) / 1000),
-                y: velocityHistory.map(point => point.vx),
+                //y: velocityHistory.map(point => point.vx),
+                y: lateralVel,
                 mode: 'lines+markers',
                 type: 'scattergl',
                 name: 'Lateral',
@@ -1930,7 +2096,8 @@ class PlaybackManager {
             },
             {
                 x: velocityHistory.map(point => (point.timestamp - startTime) / 1000),
-                y: velocityHistory.map(point => point.vy),
+                //y: velocityHistory.map(point => point.vy),
+                y: heelToeVel,
                 mode: 'lines+markers',
                 type: 'scattergl',
                 name: 'Heel-Toe',
@@ -2176,7 +2343,7 @@ class PressureSensorApp {
       
         this.state.copMode = 'normal'; // Default to normal mode
         
-        this.state.weightDistMethod = 'perFrame';
+        this.state.weightDistMethod = 'perFrame';  // Default to perFrame method
         
         this.initialize();
     }
