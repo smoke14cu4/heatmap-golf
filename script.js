@@ -2,7 +2,7 @@
  * Pressure Sensor Visualization Application
  * Version: 2.0.0
  * Author: smoke14cu4
- * Last Updated: 04-26-2025 
+ * Last Updated: 04-27-2025 
  */
 
 
@@ -38,10 +38,12 @@ const CONFIG = {
     },
     
     CALIBRATION: {
-        DURATION: 8000,
+        DURATION: 8000,  //access with    CONFIG.CALIBRATION.DURATION
         POWER_FIT_COEFFICIENT: 1390.2,
-        POWER_FIT_EXPONENT: 0.1549
-    },
+        POWER_FIT_EXPONENT: 0.1549,   //access with   CONFIG.CALIBRATION.POWER_FIT_EXPONENT
+        WEIGHT_CALIBRATE_COUNTDOWN: 3000,  //access with    CONFIG.CALIBRATION.WEIGHT_CALIBRATE_COUNTDOWN
+        WEIGHT_CALIBRATE_DURATION: 5000    //access with    CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION
+    },  
     
     DEFAULTS: {
         clearTime: 5000,
@@ -208,15 +210,19 @@ class AppState {
             recordingStarted: false,
             startTime: null,
             lastCopPosition: null,
-            maxSpeedRecorded: 0,
+            maxSpeedRecorded: 0,    //access with    this.state.recording.maxSpeedRecorded
             copPathData: [],
             playbackData: [],
             staticForceReference: null
         };
         this.calibration = {
-            isCalibrating: false,
+            isCalibrating: false,   //access with   this.state.calibration.isCalibrating
             startTime: null,
-            data: null
+            data: null,
+            weightStartTime: null,     //access with   this.state.calibration.weightStartTime
+            isCalibratingWeight: false,   //access with   this.state.calibration.isCalibratingWeight
+            _weightCalibrationActive: false,   //access with   this.state.calibration._weightCalibrationActive
+            weightCalibrationData: null   //access with   this.state.calibration.weightCalibrationData
         };
         this.latestMidpoints = {
             xMid: null,         // from getLeftRight
@@ -291,6 +297,11 @@ class DataProcessor {
                 // Process calibration data if needed
                 if (this.state.calibration.isCalibrating) {
                     this.processCalibrationData(readings);
+                }
+                
+                // Process weight calibration data if needed
+                if (this.state.calibration.isCalibratingWeight) {
+                    this.processWeightCalibrationData(readings);
                 }
 
                 // Calculate forces and update histories
@@ -376,7 +387,7 @@ class DataProcessor {
             this.completeCalibration();
         }
     }
-  
+    
     completeCalibration() {
         this.state.calibration.isCalibrating = false;
 
@@ -408,6 +419,89 @@ class DataProcessor {
 
         //Logger.log(CONFIG.DEBUG.CALIBRATION, 'Calibration', 'Calibration completed:', this.state.calibration.data);
     }
+    
+    processWeightCalibrationData(readings) {
+        //if (!this.state.calibration.isCalibratingWeight) return;
+        if (this.state.calibration.isCalibratingWeight && this.state.calibration._weightCalibrationActive) {
+
+            if (!this.state.calibration.weightCalibrationData) {
+                this.state.calibration.weightCalibrationData = {
+                    startTime: Date.now(),
+                    readings: []
+                };
+            }
+
+            this.state.calibration.weightCalibrationData.readings.push(readings);
+
+            // Check if calibration duration has elapsed
+            const elapsed = Date.now() - this.state.calibration.weightCalibrationData.startTime;        
+            //if (elapsed >= CONFIG.CALIBRATION.DURATION) {
+            if (elapsed >= CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION) {
+                //this.completeCalibration();
+                this.finishWeightCalibration();
+            }
+        }
+    }
+    
+    finishWeightCalibration() {
+        
+        const countdownDisplay = document.getElementById('calibrationMessage');
+        
+        this.state.calibration.isCalibratingWeight = false;        
+        this.state.calibration._weightCalibrationActive = false;
+
+        //const frames = this.state.visualization.weightCalibrationFrames;
+        const frames = this.state.calibration.weightCalibrationData;
+        if (!frames || frames.length < 5) {            
+            //this.showCalibrationMessage("Calibration failed: not enough data collected.");
+            countdownDisplay.textContent = 'Calibration failed: not enough data collected.';            
+            return;
+        }
+
+        // Use DataProcessor for actual calculation
+        // Toggle which method to use: "median" or "trimmedMean"
+        //let staticForceReference = this.calculateStaticForceReference(frames, "median");
+        let staticForceReference = this.calculateStaticForceReference(frames, "trimmedMean");
+
+        if (staticForceReference === null) {
+            //this.showCalibrationMessage("Calibration failed: not enough valid data.");
+            countdownDisplay.textContent = 'Calibration failed: not enough valid data.';
+            return;
+        }
+
+        //is this needed???
+        if (!this.state.recording) this.state.recording = {};
+        
+        this.state.recording.staticForceReference = staticForceReference;
+
+        //this.showCalibrationMessage("Weight Calibration Complete.");
+        countdownDisplay.textContent = 'Weight Calibration Complete.';
+        //setTimeout(() => this.showCalibrationMessage(''), 2000);
+        setTimeout(() => countdownDisplay.textContent = '', 2000);
+    }
+    
+    calculateStaticForceReference(frames, method = "trimmedMean") {
+        const totals = frames.map(f =>
+          (f.pressure || f.readings || []).reduce((sum, r) => sum + (r.value || 0), 0)
+        ).filter(t => t > 0);
+
+        if (totals.length < 5) return null;
+        totals.sort((a, b) => a - b);
+
+        // Median
+        const median = (totals.length % 2 === 1)
+          ? totals[Math.floor(totals.length / 2)]
+          : (totals[totals.length / 2 - 1] + totals[totals.length / 2]) / 2;
+
+        // Trimmed Mean (remove top/bottom 10%)
+        const trim = Math.max(1, Math.floor(totals.length * 0.1));
+        const trimmedTotals = totals.slice(trim, totals.length - trim);
+        const trimmedMean = trimmedTotals.reduce((sum, v) => sum + v, 0) / trimmedTotals.length;
+
+        return method === "median" ? median : trimmedMean;
+      
+    }
+    
   
     // Left/right foot split
       // Returns { left, right } arrays according to inversion and calibration/setting
@@ -753,8 +847,10 @@ class Visualizer {
             [],
             this.getOverlayLayout(
                 'Center of Pressure (CoP) Graph',
-                'X Position (coordinate)',
-                'Y Position (coordinate)',
+                //'X Position (coordinate)',
+                'Lateral (inches)',
+                //'Y Position (coordinate)',
+                'Heel-Toe (inches)',
                 false // no legend
             )
         );
@@ -939,22 +1035,34 @@ class Visualizer {
             }
         }
         
-        //not have xMid and avgYMid as display-ready values for showing the X and Y axis of the stance midpoint
+        //now, do a final inversion of the avgYMid since the heatmap is in screen-coords instead of cartesian
+        avgYMid = sensorsY - avgYMid;
+        
+        //now have xMid and avgYMid as display-ready, heatmap-ready values for showing the X and Y axis of the stance midpoint
+      
+        if (debug == 3) {
+            console.log("Visualizer.drawGrid corrected xMid:", xMid);
+            console.log("Visualizer.drawGrid corrected avgYMid:", avgYMid);          
+        }
+      
+        let xPx = xMid * (canvas.width / sensorsX);
+        let yPx = avgYMid * (canvas.height / sensorsY);
         
         //draw horizontal X axis for stance midpoint at y=avgYMid
-        ctx.strokeStyle = 'red';
+        //ctx.strokeStyle = 'red';
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.6)';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(0, avgYMid);
-        ctx.lineTo(canvas.width, avgYMid);
+        ctx.moveTo(0, yPx);
+        ctx.lineTo(canvas.width, yPx);
         ctx.stroke();
         
         //draw vertical Y axis for stance midpoint at X = xMid
-        ctx.strokeStyle = 'red';
-        ctx.lineWidth = 2;
+        //ctx.strokeStyle = 'red';
+        //ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(xMid, 0);
-        ctx.lineTo(xMid, canvas.height);
+        ctx.moveTo(xPx, 0);
+        ctx.lineTo(xPx, canvas.height);
         ctx.stroke();
         
         
@@ -1277,11 +1385,12 @@ class Visualizer {
             console.log("Visualizer.updateForceGraph - referenceForce:", referenceForce);
         }
         
+        /*
         const forcesHistory = forceHistory.map(f => {
               // Use the same calculation as DataProcessor, but readings are already inverted/scaled
               const readings = f.pressure;          
-              //this determines the xMid based on selected calibration method and also decides to invertX or not based on isPlayback
-              const { left: leftFoot, right: rightFoot } = DataProcessor.getLeftRight(readings);
+              //this determines the xMid based on selected calibration method and also decides to invertX or not based on isPlayback              
+              const { left: leftFoot, right: rightFoot } = this.state.app.dataProcessor.getLeftRight(readings);
               let total, left, right;
               if (useLinearFit) {
                   total = readings.reduce((sum, r) => sum + r.value, 0);
@@ -1294,22 +1403,28 @@ class Visualizer {
               }
               return { total, left, right, timestamp: f.timestamp };                
           });
+        */
         
-        //let leftForces, rightForces, totalForces;
+        
+        let leftForces, rightForces, totalForces;
         
           //per-frame (sum of left foot z values / sum of all z values):
-        const leftForces = forcesHistory.map(point => (point.left / point.total) * 100);
+        //leftForces = forcesHistory.map(point => (point.left / point.total) * 100);
+        leftForces = forceHistory.map(point => (point.left / point.total) * 100);
 
           //per-frame (sum of right foot z values / sum of all z values):
-        const rightForces = forcesHistory.map(point => (point.right / point.total) * 100);
+        //rightForces = forcesHistory.map(point => (point.right / point.total) * 100);
+        rightForces = forceHistory.map(point => (point.right / point.total) * 100);
 
           //sum of all z values / sum of all z values of first frame)
-        //const totalForces = forcesHistory.map(point => (point.total / referenceForce) * 100);
+        //totalForces = forcesHistory.map(point => (point.total / referenceForce) * 100);
+        //totalForces = forceHistory.map(point => (point.total / referenceForce) * 100);
 
           // per-frame ((sum of all right foot values + sum of all left foot values) / sum of all z values)
             //this should be basically a per-frame method of calc the 'total' relative force, 
             //and it should always be 100% (I think)                
-        const totalForces = forcesHistory.map(point => ((point.right + point.left) / point.total) * 100);
+        //totalForces = forcesHistory.map(point => ((point.right + point.left) / point.total) * 100);
+        totalForces = forceHistory.map(point => ((point.right + point.left) / point.total) * 100);
         
     
         /*
@@ -2160,8 +2275,8 @@ class PlaybackManager {
                   // Always use invertX = false here because playback data is already in display-space
                 //const { left: leftFoot, right: rightFoot } = Utils.splitLeftRight(readings, xMid, false);
                 
-                //this determines the xMid based on selected calibration method and also decides to invertX or not based on isPlayback
-                const { left: leftFoot, right: rightFoot } = DataProcessor.getLeftRight(readings);
+                //this determines the xMid based on selected calibration method and also decides to invertX or not based on isPlayback                
+                const { left: leftFoot, right: rightFoot } = this.state.app.dataProcessor.getLeftRight(readings);
                                 
                 let total, left, right;
               
@@ -2474,7 +2589,12 @@ class PressureSensorApp {
         );        
         document.getElementById('calibrateStanceButton').addEventListener('click', () => 
             this.startStanceCalibration()
-        );        
+        );
+        
+        document.getElementById('calibrateWeightBtn').addEventListener('click', () =>
+            this.startWeightCalibration()
+        );
+        
         document.getElementById('readyButton').addEventListener('click', () => 
             this.recordingManager.startCountdown()
         );      
@@ -2749,6 +2869,110 @@ class PressureSensorApp {
             }
         }, 100);
     }
+    
+    startWeightCalibration() {
+        if (this.state.calibration.isCalibratingWeight) return;
+        
+        const button = document.getElementById('calibrateWeightBtn');
+        const countdownDisplay = document.getElementById('calibrationMessage');
+        button.disabled = true;
+        
+        this.state.calibration.isCalibratingWeight = true;
+        this.state.calibration.weightCalibrationData = [];
+      
+        let timeLeft = CONFIG.CALIBRATION.WEIGHT_CALIBRATE_COUNTDOWN / 1000;
+      
+        this.state.calibration.weightStartTime = Date.now();
+        
+        //this.showCalibrationMessage(`${CONFIG.CALIBRATION.WEIGHT_CALIBRATE_COUNTDOWN} s until Start - Prepare to Be Still`);      
+        countdownDisplay.textContent = `${CONFIG.CALIBRATION.WEIGHT_CALIBRATE_COUNTDOWN}s until Start - Prepare to Be Still`
+        
+        /*
+        let countdown = CONFIG.CALIBRATION.WEIGHT_CALIBRATE_COUNTDOWN / 1000;
+        this.state.visualization.countdownInterval = setInterval(() => {
+          countdown -= 1;
+          if (countdown > 0) {
+            this.showCalibrationMessage(`${countdown} s until Start - Prepare to Be Still`);
+          } else {
+            clearInterval(this.state.visualization.countdownInterval);
+            this.startWeightDataRecording();
+          }
+        }, 1000);
+        */
+        
+        // Start the countdown interval - using same form as in startStanceCalibration
+        const countInterval = setInterval(() => {
+            timeLeft = Math.max(
+                0,
+                Math.round((CONFIG.CALIBRATION.WEIGHT_CALIBRATE_COUNTDOWN - (Date.now() - this.state.calibration.weightStartTime)) / 1000)
+            );
+            countdownDisplay.textContent = `${timeLeft}s until Start - Prepare to Be Still`;
+
+            if (timeLeft <= 0) {
+                clearInterval(countInterval);
+              
+                //this.dataProcessor.completeCalibration();
+                this.startWeightDataRecording();
+              
+                countdownDisplay.textContent = '';
+                button.disabled = false;
+            }
+        }, 100);
+        
+      }
+  
+      startWeightDataRecording() {
+          const countdownDisplay = document.getElementById('calibrationMessage');
+                  
+          //this.showCalibrationMessage(`${CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION} s - Calibrating - Please Remain Still.`);
+          countdownDisplay.textContent = `${CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION} s - Calibrating - Please Remain Still.`;
+        
+          this.state.calibration.weightCalibrationData = [];
+          
+          /*
+          let duration = CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION;
+          this.state.visualization.durationInterval = setInterval(() => {
+              duration -= 1;
+              if (duration > 0) {
+                this.showCalibrationMessage(`${duration} s - Calibrating - Please Remain Still.`);
+              } else {
+                clearInterval(this.state.visualization.durationInterval);
+                this.finishWeightCalibration();
+              }
+          }, 1000);
+          */
+        
+          this.state.calibration.weightStartTime = Date.now();
+          let timeLeft = CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION;
+          // Start the countdown interval - using same form as in startStanceCalibration
+          const countInterval = setInterval(() => {
+              timeLeft = Math.max(
+                  0,
+                  Math.round((CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION - (Date.now() - this.state.calibration.weightStartTime)) / 1000)
+              );
+              countdownDisplay.textContent = `${timeLeft}s - Calibrating - Please Remain Still.`;
+
+              if (timeLeft <= 0) {
+                  clearInterval(countInterval);
+                
+                  //this.dataProcessor.completeCalibration();
+                  this.dataProcessor.finishWeightCalibration();
+                  //this.finishWeightCalibration();
+
+                  countdownDisplay.textContent = '';                  
+              }
+          }, 100);
+
+          //this.state.visualization._weightCalibrationActive = true;
+          this.state.calibration._weightCalibrationActive = true;
+      }
+  
+  
+
+//CONFIG.CALIBRATION.WEIGHT_CALIBRATE_COUNTDOWN
+//CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION
+  
+  
 	
 }  //end of class PressureSensorApp 
 
