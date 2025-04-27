@@ -234,7 +234,6 @@ class AppState {
     }
 }
 
-
 // Data Processing Module
 class DataProcessor {
   
@@ -907,6 +906,12 @@ class Visualizer {
         const xStep = canvas.width / this.state.settings.sensorsX;
         const yStep = canvas.height / this.state.settings.sensorsY;
         
+        const isPlayback = window.app.state.isPlayback;
+        const invertX = this.state.settings.invertX;
+        const invertY = this.state.settings.invertY;
+        const sensorsX = this.state.settings.sensorsX;
+        const sensorsY = this.state.settings.sensorsY;
+        
         // Vertical lines
         for (let i = 0; i <= this.state.settings.sensorsX; i++) {
             ctx.beginPath();
@@ -921,7 +926,38 @@ class Visualizer {
             ctx.moveTo(0, i * yStep);
             ctx.lineTo(canvas.width, i * yStep);
             ctx.stroke();
+        }        
+        
+        let { xMid, avgYMid } = this.getStanceMidpoints();      
+        //apply inversions to Xmid and avgYMid taking into account whether playback or not
+        if (!isPlayback) {   //NOT playback data 
+            if (invertX) {
+              xMid = sensorsX - xMid;
+            }
+            if (invertY) {
+              avgYMid = sensorsY - avgYMid;
+            }
         }
+        
+        //not have xMid and avgYMid as display-ready values for showing the X and Y axis of the stance midpoint
+        
+        //draw horizontal X axis for stance midpoint at y=avgYMid
+        ctx.strokeStyle = 'red';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, avgYMid);
+        ctx.lineTo(canvas.width, avgYMid);
+        ctx.stroke();
+        
+        //draw vertical Y axis for stance midpoint at X = xMid
+        ctx.strokeStyle = 'red';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(xMid, 0);
+        ctx.lineTo(xMid, canvas.height);
+        ctx.stroke();
+        
+        
     }
     
     drawCoPPath(ctx, canvas) {
@@ -1226,51 +1262,67 @@ class Visualizer {
         if (now - this.lastForceUpdate < 100) return; // update at most every 100ms (10 FPS)
         this.lastForceUpdate = now;        
         
-        const forceHistory = this.state.visualization.forceHistory;
+        //this is the forceHistory built with DataProcessor class with the appropriate history length and all
+        const forceHistory = this.state.visualization.forceHistory;  
         if (forceHistory.length < 2) return;
         
         const mostRecentTime = forceHistory[forceHistory.length - 1].timestamp;
-        const times = forceHistory.map(point => 
-            (point.timestamp - mostRecentTime) / 1000
-        );
+        //changes the times to relative times:
+        const times = forceHistory.map(point => (point.timestamp - mostRecentTime) / 1000);
         
-        const referenceForce = this.state.recording.staticForceReference || 
-                             forceHistory[0].total;
+        const referenceForce = this.state.recording.staticForceReference || forceHistory[0].total;
         
         if (debug == 2) {
             console.log("Visualizer.updateForceGraph - forceHistory:", forceHistory);
             console.log("Visualizer.updateForceGraph - referenceForce:", referenceForce);
         }
-      
         
-        //moved to global //const useLinearFit = true; // Could be made configurable
+        const forcesHistory = forceHistory.map(f => {
+              // Use the same calculation as DataProcessor, but readings are already inverted/scaled
+              const readings = f.pressure;          
+              //this determines the xMid based on selected calibration method and also decides to invertX or not based on isPlayback
+              const { left: leftFoot, right: rightFoot } = DataProcessor.getLeftRight(readings);
+              let total, left, right;
+              if (useLinearFit) {
+                  total = readings.reduce((sum, r) => sum + r.value, 0);
+                  left = leftFoot.reduce((sum, r) => sum + r.value, 0);
+                  right = rightFoot.reduce((sum, r) => sum + r.value, 0);
+              } else {
+                  total = readings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+                  left = leftFoot.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+                  right = rightFoot.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+              }
+              return { total, left, right, timestamp: f.timestamp };                
+          });
         
-        let leftForces, rightForces, totalForces;
+        //let leftForces, rightForces, totalForces;
         
-        //this logic needs to be re-done.  leftForces and rightForces should do point.left/referenceForce..I think
-          //doing point.left/point.total simply gives the per-frame percentage of left (and right) force
-              //which is what want for mostly static forces, but when there's dynamic conditions, the
-              //left+right force might go over 100%... meaning that the push off of the left foot's force
-              // plus the weight support of the right foot force could equal more than body weight
-              //since static left + right foot force should always equal body weight
-            //this is especially the case for the power-fit calculation of total force below...
+          //per-frame (sum of left foot z values / sum of all z values):
+        const leftForces = forcesHistory.map(point => (point.left / point.total) * 100);
+
+          //per-frame (sum of right foot z values / sum of all z values):
+        const rightForces = forcesHistory.map(point => (point.right / point.total) * 100);
+
+          //sum of all z values / sum of all z values of first frame)
+        //const totalForces = forcesHistory.map(point => (point.total / referenceForce) * 100);
+
+          // per-frame ((sum of all right foot values + sum of all left foot values) / sum of all z values)
+            //this should be basically a per-frame method of calc the 'total' relative force, 
+            //and it should always be 100% (I think)                
+        const totalForces = forcesHistory.map(point => ((point.right + point.left) / point.total) * 100);
+        
     
-      
-        //totalForces should just be leftForces + rightForces
-      
-        //combine the calculatiions being done (like did with mid points), by exposing 
-          //leftPressure, rightPressure, and totalPressure from DataProcessor.calculateForces. left, right, total
-            //this way, the userLinearFit or power fit is already accounted for.
-            
-          //except, don't combine if change the way of left/total yada yada, but still calculate like do
-            //in DataProcessor.calculateForces (where call the util helper function for power calculations)  
-    
-        
+        /*
         //if (window.useLinearFit) {
         if (useLinearFit) {
             leftForces = forceHistory.map(point => (point.left / point.total) * 100);            
             rightForces = forceHistory.map(point => (point.right / point.total) * 100);
-            totalForces = forceHistory.map(point => (point.total / referenceForce) * 100);
+          
+              //sum of all z values in current frame / referenceForce  
+                //need to have better algorithm for determining referenceForce
+            //totalForces = forceHistory.map(point => (point.total / referenceForce) * 100);
+              //more like a per-frame method of total force ... should always be 100%
+            totalForces = forceHistory.map(point => ((point.left + point.right) / point.total) * 100);
         } else {
           
             //leftForces = forceHistory.map(point => (point.left / point.total) * 100);
@@ -1321,7 +1373,9 @@ class Visualizer {
             }            
             
         }
-        
+        */
+              
+      
         const traces = [
             {
                 x: times,
@@ -1393,16 +1447,18 @@ class Visualizer {
         // --- LOGIC SPLITS: always use raw readings ---
           // Use DataProcessor logic for left/right split        
         //const { left: leftFoot, right: rightFoot } = dataProcessor.getLeftRight(adjReadings);  //this did double inversion
+        
+        //this returns the readings (x,y,z) for the left foot and for the right foot
         const { left: leftFoot, right: rightFoot } = dataProcessor.getLeftRight(readings);
 
         // Value function
         //const useLinearFit = (typeof window.useLinearFit !== "undefined" ? window.useLinearFit : true);        
         const useLinearFitFlag = window.useLinearFit;
         
-        const valueFunc = useLinearFitFlag ? (r) => r.value : (r) => Math.pow(
-                (r.value / (settings.POWER_FIT_COEFFICIENT || 1390.2)),
-                1 / (settings.POWER_FIT_EXPONENT || 0.1549));
-
+        //const valueFunc = useLinearFitFlag ? (r) => r.value : (r) => Math.pow(
+        //        (r.value / (settings.POWER_FIT_COEFFICIENT || 1390.2)),
+        //        1 / (settings.POWER_FIT_EXPONENT || 0.1549));        
+        const valueFunc = useLinearFitFlag ? (r) => r.value : (r) => Utils.zValueToWeight(r.value);
         
         // Toe/heel split per foot (always use raw readings)
           // Toe/heel split using DataProcessor method
@@ -1416,28 +1472,34 @@ class Visualizer {
             const heelSum = heel.reduce((sum, r) => sum + valueFunc(r), 0);
             const footTotal = footReadings.reduce((sum, r) => sum + valueFunc(r), 0);
             return {
-                toe: footTotal ? ((toeSum / footTotal) * 100).toFixed(1) : "0.0",
-                heel: footTotal ? ((heelSum / footTotal) * 100).toFixed(1) : "0.0"
+                //toe: footTotal ? ((toeSum / footTotal) * 100).toFixed(1) : "0.0",
+                //heel: footTotal ? ((heelSum / footTotal) * 100).toFixed(1) : "0.0"
+                toe: footTotal ? ((toeSum / footTotal) * 100).toFixed(0) : "0",
+                heel: footTotal ? ((heelSum / footTotal) * 100).toFixed(0) : "0"
             };
         }
       
         // Forces are always calculated using raw readings
-        const forces = dataProcessor.calculateForces(readings);
-        const total = forces.total;
+        const forces = dataProcessor.calculateForces(readings);  //returns sum of left foot z values, sum of right foot z values, and sum of total (all z values)
+        const total = forces.total;  //sum of all z readings for this frame
+        //const leftTotal = forces.left;  //sum of left foot z readings for this frame
+        //const rightTotal = forces.right;  //sum or right foot z readings for this frame
 
         const leftTotal = leftFoot.reduce((sum, r) => sum + valueFunc(r), 0);
         const rightTotal = rightFoot.reduce((sum, r) => sum + valueFunc(r), 0);
 
-        const leftPercent = total ? ((leftTotal / total) * 100).toFixed(1) : "0.0";
-        const rightPercent = total ? ((rightTotal / total) * 100).toFixed(1) : "0.0";
+        //const leftPercent = total ? ((leftTotal / total) * 100).toFixed(1) : "0.0";        
+        //const rightPercent = total ? ((rightTotal / total) * 100).toFixed(1) : "0.0";
+        const leftPercent = total ? ((leftTotal / total) * 100).toFixed(0) : "0";
+        const rightPercent = total ? ((rightTotal / total) * 100).toFixed(0) : "0";
 
         document.getElementById('front-percentage').textContent = leftPercent;
         document.getElementById('back-percentage').textContent = rightPercent;
 
         // Per-foot toe/heel
-        //const leftTH = toeHeelPerc(leftFoot);
-        const leftTH = toeHeelPerc(leftFoot, "left");        
+        //const leftTH = toeHeelPerc(leftFoot);        
         //const rightTH = toeHeelPerc(rightFoot);
+        const leftTH = toeHeelPerc(leftFoot, "left");
         const rightTH = toeHeelPerc(rightFoot, "right");
 
         document.getElementById('front-toe-percentage').textContent = `Toe: ${leftTH.toe}%`;
@@ -1445,8 +1507,6 @@ class Visualizer {
         document.getElementById('back-toe-percentage').textContent = `Toe: ${rightTH.toe}%`;
         document.getElementById('back-heel-percentage').textContent = `Heel: ${rightTH.heel}%`;
     }
-
-    
     
     clearAll() {
         // Clear heatmap data
@@ -1595,8 +1655,7 @@ class BluetoothManager {
             Logger.updateConnectionInfo(`Connection failed (Attempt ${retryCount + 1})`, error);
             
             if (retryCount < this.maxRetryAttempts) {
-                Logger.updateConnectionInfo(`Retrying connection in ${this.retryDelay/1000} seconds...`
-                );
+                Logger.updateConnectionInfo(`Retrying connection in ${this.retryDelay/1000} seconds...`);
                 setTimeout(() => this.connectToDevice(device, retryCount + 1), this.retryDelay);
             } else {
                 Logger.updateConnectionInfo('Maximum retry attempts reached');
@@ -1956,17 +2015,17 @@ class PlaybackManager {
             return;
         }
 
-        // 1. Prepare playback history arrays for visualizations
+      // 1. Prepare playback history arrays for visualizations
         // These arrays are already adjusted for inversion/scaling in recording, so pass as-is.
-        const startTime = this.state.recording.playbackData[0].timestamp;
-                
+        const startTime = this.state.recording.playbackData[0].timestamp;                
 
         // Build CoP history up to this frame for CoP path drawing (and velocity)
         const copHistory = this.state.recording.playbackData.slice(0, frameIndex + 1)
             .map(f => ({
                 ...f.cop,
                 timestamp: f.timestamp
-            }));
+            }));        
+        this.state.visualization.copHistory = copHistory;
 
         // Build pressure history up to this frame if needed
         const dataHistory = this.state.recording.playbackData.slice(0, frameIndex + 1)
@@ -1975,6 +2034,30 @@ class PlaybackManager {
                 readings: f.pressure
             }));
 
+      // 2. Update Visualizer's temporary state for playback
+        // (This avoids overwriting live data, and all updates use these arrays)
+        //this.state.visualization.dataHistory = dataHistory;        
+        this.state.visualization.dataHistory = [{
+            timestamp: frame.timestamp,
+            readings: frame.pressure
+        }];        
+
+      // 3. Update heatmap (pass current readings, CoP, and full CoP path for overlay)
+        this.state.app.visualizer.updateHeatmap({
+            readings: frame.pressure,
+            cop: frame.cop
+        });
+        // Overlay path and dot will use .copHistory
+
+        // Get total duration for x-axis range
+        const totalDuration = (this.state.recording.playbackData[this.state.recording.playbackData.length - 1].timestamp - startTime) / 1000;
+              
+      // 4. Update CoP graph
+        this.state.app.visualizer.updateCoPGraph();
+      
+      // 5. Update velocity graph
+        //this.state.app.visualizer.updateVelocityGraph();
+        
         // Build velocity history for this playback segment
         const velocityHistory = [];
         for (let i = 1; i < copHistory.length; i++) {
@@ -1988,6 +2071,7 @@ class PlaybackManager {
           
             const dx = (curr.x - prev.x) * inchesPerSensorX;
             const dy = (curr.y - prev.y) * inchesPerSensorY;
+            
             velocityHistory.push({
                 timestamp: curr.timestamp,
                 x: curr.x,
@@ -2005,71 +2089,8 @@ class PlaybackManager {
                 vx: 0,
                 vy: 0
             });
-
-      
-        //const useLinearFit = (typeof window.useLinearFit !== "undefined" ? window.useLinearFit : true);
-      
-        // Build force history up to this frame
-        const forcesHistory = this.state.recording.playbackData.slice(0, frameIndex + 1)
-            .map(f => {
-                // Use the same calculation as DataProcessor, but readings are already inverted/scaled
-                const readings = f.pressure;
-                // Calculate left/right split at x midpoint
-                const xVals = readings.map(r => r.x);
-                const minX = Math.min(...xVals), maxX = Math.max(...xVals);
-                const xMid = minX + (maxX - minX) / 2;
-              
-                //this didn't take into account the invertX setting when determining leftFoot and rightFoot
-                //let leftFoot = readings.filter(r => r.x <= xMid);
-                //let rightFoot = readings.filter(r => r.x > xMid);
-                
-                //still run the readings thru the Utils.splitLeftRight to determine which is left and which is right based on inversion
-                  // Always use invertX = false here because playback data is already in display-space
-                const { left: leftFoot, right: rightFoot } = Utils.splitLeftRight(readings, xMid, false);
-                                
-                let total, left, right;
-              
-                if (useLinearFit) {
-                    total = readings.reduce((sum, r) => sum + r.value, 0);
-                    left = leftFoot.reduce((sum, r) => sum + r.value, 0);
-                    right = rightFoot.reduce((sum, r) => sum + r.value, 0);
-                } else {
-                    total = readings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
-                    left = leftFoot.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
-                    right = rightFoot.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
-                }
-                return { total, left, right, timestamp: f.timestamp };
-                
-            });
-
-        // 2. Update Visualizer's temporary state for playback
-        // (This avoids overwriting live data, and all updates use these arrays)
-        //this.state.visualization.dataHistory = dataHistory;
         
-        this.state.visualization.dataHistory = [{
-            timestamp: frame.timestamp,
-            readings: frame.pressure
-        }];
-        
-        this.state.visualization.copHistory = copHistory;
         this.state.visualization.velocityHistory = velocityHistory;
-        this.state.visualization.forceHistory = forcesHistory;
-
-        // 3. Update heatmap (pass current readings, CoP, and full CoP path for overlay)
-        this.state.app.visualizer.updateHeatmap({
-            readings: frame.pressure,
-            cop: frame.cop
-        });
-        // Overlay path and dot will use .copHistory
-
-        // Get total duration for x-axis range
-        const totalDuration = (this.state.recording.playbackData[this.state.recording.playbackData.length - 1].timestamp - startTime) / 1000;
-              
-        // 4. Update CoP graph
-        this.state.app.visualizer.updateCoPGraph();
-      
-        // 5. Update velocity graph
-        //this.state.app.visualizer.updateVelocityGraph();
         
         const copMode = this.state.app.state.copMode || 'normal';
       
@@ -2116,13 +2137,57 @@ class PlaybackManager {
 
         Plotly.react('velocity-graph', velocityTraces, velocityLayout);
 
-        // 6. Update force graph
+      // 6. Update force graph
         //this.state.app.visualizer.updateForceGraph();
+        
+        //const xMid = this.state.latestMidpoints.xMid;  //retrieves the latest xMid x midpoint calculated        
+        // Build force history up to this frame
+        const forcesHistory = this.state.recording.playbackData.slice(0, frameIndex + 1)
+            .map(f => {
+                // Use the same calculation as DataProcessor, but readings are already inverted/scaled
+                const readings = f.pressure;              
+                
+                // Calculate left/right split at x midpoint
+                //const xVals = readings.map(r => r.x);
+                //const minX = Math.min(...xVals), maxX = Math.max(...xVals);
+                //const xMid = minX + (maxX - minX) / 2;
+              
+                //this didn't take into account the invertX setting when determining leftFoot and rightFoot
+                //let leftFoot = readings.filter(r => r.x <= xMid);
+                //let rightFoot = readings.filter(r => r.x > xMid);
+                
+                //still run the readings thru the Utils.splitLeftRight to determine which is left and which is right based on inversion
+                  // Always use invertX = false here because playback data is already in display-space
+                //const { left: leftFoot, right: rightFoot } = Utils.splitLeftRight(readings, xMid, false);
+                
+                //this determines the xMid based on selected calibration method and also decides to invertX or not based on isPlayback
+                const { left: leftFoot, right: rightFoot } = DataProcessor.getLeftRight(readings);
+                                
+                let total, left, right;
+              
+                if (useLinearFit) {
+                    total = readings.reduce((sum, r) => sum + r.value, 0);
+                    left = leftFoot.reduce((sum, r) => sum + r.value, 0);
+                    right = rightFoot.reduce((sum, r) => sum + r.value, 0);
+                } else {
+                    total = readings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+                    left = leftFoot.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+                    right = rightFoot.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
+                }
+                return { total, left, right, timestamp: f.timestamp };
+                
+            });        
+        this.state.visualization.forceHistory = forcesHistory;
+        
+        
         // Update force graph with modified layout
         const forceTraces = [
             {
                 x: forcesHistory.map(point => (point.timestamp - startTime) / 1000),
-                y: forcesHistory.map(point => (point.left / point.total) * 100),
+                
+                //per-frame (sum of left foot z values / sum of all z values)
+                y: forcesHistory.map(point => (point.left / point.total) * 100),  
+                
                 mode: 'lines+markers',
                 type: 'scattergl',
                 name: 'Left',
@@ -2131,7 +2196,10 @@ class PlaybackManager {
             },
             {
                 x: forcesHistory.map(point => (point.timestamp - startTime) / 1000),
-                y: forcesHistory.map(point => (point.right / point.total) * 100),
+                
+                //per-frame (sum of right foot z values / sum of all z values)
+                y: forcesHistory.map(point => (point.right / point.total) * 100), 
+              
                 mode: 'lines+markers',
                 type: 'scattergl',
                 name: 'Right',
@@ -2140,7 +2208,15 @@ class PlaybackManager {
             },
             {
                 x: forcesHistory.map(point => (point.timestamp - startTime) / 1000),
-                y: forcesHistory.map(point => (point.total / forcesHistory[0].total) * 100),
+                
+                // per-frame (sum of all z values / sum of all z values of first frame)
+                //y: forcesHistory.map(point => (point.total / forcesHistory[0].total) * 100), 
+                
+                // per-frame ((sum of all right foot values + sum of all left foot values) / sum of all z values)
+                  //this should be basically a per-frame method of calc the 'total' relative force, 
+                  //and it should always be 100% (I think)                
+                y: forcesHistory.map(point => ((point.right + point.left) / point.total) * 100), 
+                
                 mode: 'lines+markers',
                 type: 'scattergl',
                 name: 'Total',
@@ -2160,7 +2236,7 @@ class PlaybackManager {
         Plotly.react('force-graph', forceTraces, forceLayout);      
       
 
-        // 7. Update pressure distribution (now with heel/toe splits)
+      // 7. Update pressure distribution (now with heel/toe splits)
         this.state.app.visualizer.updatePressureDistributionLive(
             frame.pressure,
             frame.cop,
@@ -2222,6 +2298,8 @@ class PlaybackManager {
             yMax = Math.max(yMax, copHistory[i].y);
             
         }
+        
+        Logger.updateConnectionInfo(`Recorded History Length = ${copHistory.length} frames.`);
       
         // X dist. (lateral distance) and Y dist (heel-toe distance)
           //the two below show the dist of the finish point from the start point... not quite what I want
@@ -2238,6 +2316,8 @@ class PlaybackManager {
         document.getElementById('pathDistance').textContent = pathLen.toFixed(2);
         document.getElementById('avgSpeed').textContent = avgSpeed.toFixed(2);
         document.getElementById('maxSpeed').textContent = maxSpeed.toFixed(2);
+        //max lateral speed (vel)
+        //max heel-toe speed (vel)
         document.getElementById('totalTime').textContent = totalTime.toFixed(2);
         //document.getElementById('xDistance').textContent = xDist.toFixed(2);
         document.getElementById('xDistance').textContent = (xMax - xMin).toFixed(2);
