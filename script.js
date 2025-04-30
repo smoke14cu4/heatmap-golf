@@ -2,7 +2,7 @@
  * Pressure Sensor Visualization Application
  * Version: 2.0.0
  * Author: smoke14cu4
- * Last Updated: 04-27-2025 
+ * Last Updated: 04-30-2025 
  */
 
 
@@ -11,7 +11,9 @@
 var useLinearFit = true;  //set to true to use linear fit for weight calcs  //set to false to use power fitforceHistory
 //var useLinearFit = false;  //set to true to use linear fit for weight calcs  //set to false to use power fitforceHistory
 
-var debug = 0;  //0 to disable  //2 is for useLinearFit debugging  //3 is for midpoint calculations display
+//0 to disable  //2 is for useLinearFit debugging  //3 is for midpoint calculations display
+//4 is for staticForceReference stuff
+var debug = 0;  
 
 // Configuration
 const CONFIG = {
@@ -251,11 +253,8 @@ class DataProcessor {
     }
     
     processFrame(frame) {
-        //if (!frame) return;
+        //if (!frame) return;        
         
-        //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Processing frame', frame);        
-        //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Raw frame received:', frame);
-      
         // Clear previous timeout
         if (this.state.clearTimeout) {
             clearTimeout(this.state.clearTimeout);
@@ -273,20 +272,10 @@ class DataProcessor {
                 const timestamp = Date.now();
               
                 // Update histories
-                this.updateDataHistory(readings, timestamp); 
-                //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated data history');
-                //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated data history:', {
-                //    historyLength: this.state.visualization.dataHistory.length,
-                //    latestReadings: readings
-                //});
+                this.updateDataHistory(readings, timestamp);                
               
                 if (cop) {
-                    this.updateCopHistory(cop, timestamp);
-                    //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated CoP history');
-                    //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated CoP history:', {
-                    //    historyLength: this.state.visualization.copHistory.length,
-                    //    latestCoP: cop
-                    //});
+                    this.updateCopHistory(cop, timestamp);                    
                   
                     // Calculate velocities
                     const velocities = this.calculateVelocities(cop, timestamp);
@@ -301,6 +290,7 @@ class DataProcessor {
                 
                 // Process weight calibration data if needed
                 if (this.state.calibration.isCalibratingWeight) {
+                    //if (debug == 4) console.log("DataProcessor.processFrame - calling processWeightCalibrationData");
                     this.processWeightCalibrationData(readings);
                 }
 
@@ -308,13 +298,7 @@ class DataProcessor {
                 const forces = this.calculateForces(readings);
                 this.updateForceHistory(forces, timestamp);
                 //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated force history');
-
-                //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated histories', {
-                //    dataHistoryLength: this.state.visualization.dataHistory.length,
-                //    copHistoryLength: this.state.visualization.copHistory.length,
-                //    forceHistoryLength: this.state.visualization.forceHistory.length
-                //});
-              
+                
                 return { readings, cop, forces, timestamp };
             }
 
@@ -421,17 +405,23 @@ class DataProcessor {
     }
     
     processWeightCalibrationData(readings) {
+        //if (debug == 4) console.log("DataProcessor.processWeightCalibrationData - just entered processWeightCalibrationData");
         //if (!this.state.calibration.isCalibratingWeight) return;
         if (this.state.calibration.isCalibratingWeight && this.state.calibration._weightCalibrationActive) {
+        //if (!this.state.calibration.isCalibratingWeight && !this.state.calibration._weightCalibrationActive) return;
+            
+            //if (debug == 4) console.log("DataProcessor.processWeightCalibrationData - running method processWeightCalibrationData");
 
-            if (!this.state.calibration.weightCalibrationData) {
+            if (!this.state.calibration.weightCalibrationData) {                
+                //if (debug == 4) console.log("DataProcessor.processWeightCalibrationData - setting up calibration.weightCalibrationData data structure");                
                 this.state.calibration.weightCalibrationData = {
                     startTime: Date.now(),
                     readings: []
                 };
             }
 
-            this.state.calibration.weightCalibrationData.readings.push(readings);
+            this.state.calibration.weightCalibrationData.readings.push(readings);            
+            //if (debug == 4) console.log("DataProcessor.processWeightCalibrationData weightCalibrationData.readings:", this.state.calibration.weightCalibrationData.readings);
 
             // Check if calibration duration has elapsed
             const elapsed = Date.now() - this.state.calibration.weightCalibrationData.startTime;        
@@ -445,23 +435,27 @@ class DataProcessor {
     
     finishWeightCalibration() {
         
+        //if (debug == 4) console.log("DataProcessor.finishWeightCalibration - just entered finishWeightCalibration");
+        
         const countdownDisplay = document.getElementById('calibrationMessage');
         
         this.state.calibration.isCalibratingWeight = false;        
         this.state.calibration._weightCalibrationActive = false;
-
-        //const frames = this.state.visualization.weightCalibrationFrames;
+        
         const frames = this.state.calibration.weightCalibrationData;
         if (!frames || frames.length < 5) {            
-            //this.showCalibrationMessage("Calibration failed: not enough data collected.");
             countdownDisplay.textContent = 'Calibration failed: not enough data collected.';            
             return;
         }
+        
+        if (debug == 4) console.log("DataProcessor.finishWeightCalibration frames:", frames);
 
         // Use DataProcessor for actual calculation
         // Toggle which method to use: "median" or "trimmedMean"
-        //let staticForceReference = this.calculateStaticForceReference(frames, "median");
-        let staticForceReference = this.calculateStaticForceReference(frames, "trimmedMean");
+        let staticForceReference = this.calculateStaticForceReference(frames, "median");
+        //let staticForceReference = this.calculateStaticForceReference(frames, "trimmedMean");
+        
+        //if (debug == 4) console.log("DataProcessor.finishWeightCalibration staticForceReference:", staticForceReference);
 
         if (staticForceReference === null) {
             //this.showCalibrationMessage("Calibration failed: not enough valid data.");
@@ -478,13 +472,28 @@ class DataProcessor {
         countdownDisplay.textContent = 'Weight Calibration Complete.';
         //setTimeout(() => this.showCalibrationMessage(''), 2000);
         setTimeout(() => countdownDisplay.textContent = '', 2000);
+        
+        
+        if (debug == 4) console.log("DataProcessor.finishWeightCalibration staticForceReference:", staticForceReference);
+        
     }
     
     calculateStaticForceReference(frames, method = "trimmedMean") {
-        const totals = frames.map(f =>
-          (f.pressure || f.readings || []).reduce((sum, r) => sum + (r.value || 0), 0)
-        ).filter(t => t > 0);
+        //const totals = frames.readings.map(f =>
+        //  (f.pressure || f.readings || []).reduce((sum, r) => sum + (r.value || 0), 0)
+        //).filter(t => t > 0);
+      
+        //const totals = frames.readings.map(f =>
+        //  f.reduce((sum, r) => sum + (r.value || 0), 0)
+        //).filter(t => t > 0);
+      
+        const totals = frames.readings.map(f => f.reduce((sum, r) => sum + (r.value || 0), 0)).filter(t => t > 0);
+        
+        //if (debug == 4) console.log("DataProcessor.calculateStaticForceReference totals:", totals);
 
+        //overall mean
+        const mean = totals.reduce((sum, v) => sum + v, 0) / totals.length;
+      
         if (totals.length < 5) return null;
         totals.sort((a, b) => a - b);
 
@@ -499,6 +508,7 @@ class DataProcessor {
         const trimmedMean = trimmedTotals.reduce((sum, v) => sum + v, 0) / trimmedTotals.length;
 
         return method === "median" ? median : trimmedMean;
+        //return method === "median" ? median : mean;
       
     }
     
@@ -610,11 +620,7 @@ class DataProcessor {
             this.state.visualization.forceHistory = 
                 this.state.visualization.forceHistory.slice(-this.state.settings.copHistoryLength);
         }
-
-        //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Updated force history:', {
-        //    historyLength: this.state.visualization.forceHistory.length,
-        //    latestForces: forces
-        //});
+        
     }
     
     calculateVelocities(cop, timestamp) {
@@ -732,11 +738,6 @@ class Visualizer {
         if (!container || !heatmapElement) {
             throw new Error('Required heatmap elements not found in DOM');
         }
-        
-        //Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'Container dimensions:', {
-        //    width: container.offsetWidth,
-        //    height: container.offsetHeight
-        //});
         
         this.adjustContainerDimensions();
         
@@ -1371,6 +1372,7 @@ class Visualizer {
         this.lastForceUpdate = now;        
         
         //this is the forceHistory built with DataProcessor class with the appropriate history length and all
+          //from DataProcessor.calculateForces -> also applied linearFit or power fit
         const forceHistory = this.state.visualization.forceHistory;  
         if (forceHistory.length < 2) return;
         
@@ -1385,111 +1387,34 @@ class Visualizer {
             console.log("Visualizer.updateForceGraph - referenceForce:", referenceForce);
         }
         
-        /*
-        const forcesHistory = forceHistory.map(f => {
-              // Use the same calculation as DataProcessor, but readings are already inverted/scaled
-              const readings = f.pressure;          
-              //this determines the xMid based on selected calibration method and also decides to invertX or not based on isPlayback              
-              const { left: leftFoot, right: rightFoot } = this.state.app.dataProcessor.getLeftRight(readings);
-              let total, left, right;
-              if (useLinearFit) {
-                  total = readings.reduce((sum, r) => sum + r.value, 0);
-                  left = leftFoot.reduce((sum, r) => sum + r.value, 0);
-                  right = rightFoot.reduce((sum, r) => sum + r.value, 0);
-              } else {
-                  total = readings.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
-                  left = leftFoot.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
-                  right = rightFoot.reduce((sum, r) => sum + Utils.zValueToWeight(r.value), 0);
-              }
-              return { total, left, right, timestamp: f.timestamp };                
-          });
-        */
-        
         
         let leftForces, rightForces, totalForces;
         
-          //per-frame (sum of left foot z values / sum of all z values):
-        //leftForces = forcesHistory.map(point => (point.left / point.total) * 100);
-        leftForces = forceHistory.map(point => (point.left / point.total) * 100);
+        //on a Per-Frame basis - when done this way, the total force is always 100%, 
+          //and the left and right are mirror images of each other
+      
+          //per-frame (sum of left foot z values / sum of all z values):        
+        //leftForces = forceHistory.map(point => (point.left / point.total) * 100);
 
-          //per-frame (sum of right foot z values / sum of all z values):
-        //rightForces = forcesHistory.map(point => (point.right / point.total) * 100);
-        rightForces = forceHistory.map(point => (point.right / point.total) * 100);
-
-          //sum of all z values / sum of all z values of first frame)
-        //totalForces = forcesHistory.map(point => (point.total / referenceForce) * 100);
-        //totalForces = forceHistory.map(point => (point.total / referenceForce) * 100);
-
+          //per-frame (sum of right foot z values / sum of all z values):        
+        //rightForces = forceHistory.map(point => (point.right / point.total) * 100);        
+        
           // per-frame ((sum of all right foot values + sum of all left foot values) / sum of all z values)
             //this should be basically a per-frame method of calc the 'total' relative force, 
-            //and it should always be 100% (I think)                
-        //totalForces = forcesHistory.map(point => ((point.right + point.left) / point.total) * 100);
-        totalForces = forceHistory.map(point => ((point.right + point.left) / point.total) * 100);
+            //and it should always be 100%
+        //totalForces = forceHistory.map(point => ((point.right + point.left) / point.total) * 100);        
+
         
-    
-        /*
-        //if (window.useLinearFit) {
-        if (useLinearFit) {
-            leftForces = forceHistory.map(point => (point.left / point.total) * 100);            
-            rightForces = forceHistory.map(point => (point.right / point.total) * 100);
-          
-              //sum of all z values in current frame / referenceForce  
-                //need to have better algorithm for determining referenceForce
-            //totalForces = forceHistory.map(point => (point.total / referenceForce) * 100);
-              //more like a per-frame method of total force ... should always be 100%
-            totalForces = forceHistory.map(point => ((point.left + point.right) / point.total) * 100);
-        } else {
-          
-            //leftForces = forceHistory.map(point => (point.left / point.total) * 100);
-            //rightForces = forceHistory.map(point => (point.right / point.total) * 100);
-            //totalForces = forceHistory.map(point => (point.total / referenceForce) * 100);
-          
-            // Use power fit for left, right, and total
-            leftForces = forceHistory.map(point => {
-                const leftPower = Math.pow(
-                    (point.left / CONFIG.CALIBRATION.POWER_FIT_COEFFICIENT),
-                    1 / CONFIG.CALIBRATION.POWER_FIT_EXPONENT
-                );
-                const totalPower = Math.pow(
-                    (point.total / CONFIG.CALIBRATION.POWER_FIT_COEFFICIENT),
-                    1 / CONFIG.CALIBRATION.POWER_FIT_EXPONENT
-                );
-                return totalPower !== 0 ? (leftPower / totalPower) * 100 : 0;
-            });
-            rightForces = forceHistory.map(point => {
-                const rightPower = Math.pow(
-                    (point.right / CONFIG.CALIBRATION.POWER_FIT_COEFFICIENT),
-                    1 / CONFIG.CALIBRATION.POWER_FIT_EXPONENT
-                );
-                const totalPower = Math.pow(
-                    (point.total / CONFIG.CALIBRATION.POWER_FIT_COEFFICIENT),
-                    1 / CONFIG.CALIBRATION.POWER_FIT_EXPONENT
-                );
-                return totalPower !== 0 ? (rightPower / totalPower) * 100 : 0;
-            });
-            
-            //this is not a very good way to calculate... if not just flat out wrong!!!
-            totalForces = forceHistory.map(point => {
-                const totalPower = Math.pow(
-                    (point.total / CONFIG.CALIBRATION.POWER_FIT_COEFFICIENT),
-                    1 / CONFIG.CALIBRATION.POWER_FIT_EXPONENT
-                );
-                const refPower = Math.pow(
-                    (referenceForce / CONFIG.CALIBRATION.POWER_FIT_COEFFICIENT),
-                    1 / CONFIG.CALIBRATION.POWER_FIT_EXPONENT
-                );
-                return refPower !== 0 ? (totalPower / refPower) * 100 : 0;
-            });
-            
-            if (debug == 2) {
-                console.log("Visualizer.updateForceGraph - leftForces:", leftForces);
-                console.log("Visualizer.updateForceGraph - rightForces:", rightForces);
-                console.log("Visualizer.updateForceGraph - totalForces:", totalForces);
-            }            
-            
-        }
-        */
-              
+        //With Respect to Reference Force:
+          //sum of all left foot values / reference force
+        leftForces = forceHistory.map(point => (point.left / referenceForce) * 100);
+        
+          //sum of all right foot values / reference force
+        rightForces = forceHistory.map(point => (point.right / referenceForce) * 100);
+        
+          //sum of all z values / sum of all z values of first frame)        
+        totalForces = forceHistory.map(point => (point.total / referenceForce) * 100);
+        
       
         const traces = [
             {
@@ -1532,7 +1457,8 @@ class Visualizer {
             true
         );
         layout.xaxis.autorange = 'reversed';
-        layout.xaxis.range = [-(this.state.settings.copHistoryLength / 30), 0];      
+        layout.xaxis.range = [-(this.state.settings.copHistoryLength / 30), 0];
+        //layout.yaxis.range = 150;
         
         //Plotly.newPlot('force-graph', traces, layout);
         
@@ -2292,16 +2218,22 @@ class PlaybackManager {
                 return { total, left, right, timestamp: f.timestamp };
                 
             });        
-        this.state.visualization.forceHistory = forcesHistory;
-        
+        this.state.visualization.forceHistory = forcesHistory;        
+      
+        const referenceForce = this.state.recording.staticForceReference || forcesHistory[0].total;
         
         // Update force graph with modified layout
         const forceTraces = [
             {
                 x: forcesHistory.map(point => (point.timestamp - startTime) / 1000),
                 
-                //per-frame (sum of left foot z values / sum of all z values)
-                y: forcesHistory.map(point => (point.left / point.total) * 100),  
+                  //when done on a Per-Frame basis, the total force is always 100%, 
+                    //and the left and right are mirror images of each other
+                  //per-frame (sum of left foot z values / sum of all z values)
+                //y: forcesHistory.map(point => (point.left / point.total) * 100),
+                  
+                  //With Respect to Reference Force - sum of all left foot values / reference force
+                y: forcesHistory.map(point => (point.left / referenceForce) * 100),
                 
                 mode: 'lines+markers',
                 type: 'scattergl',
@@ -2312,8 +2244,13 @@ class PlaybackManager {
             {
                 x: forcesHistory.map(point => (point.timestamp - startTime) / 1000),
                 
-                //per-frame (sum of right foot z values / sum of all z values)
-                y: forcesHistory.map(point => (point.right / point.total) * 100), 
+                  //when done on a Per-Frame basis, the total force is always 100%, 
+                    //and the left and right are mirror images of each other
+                  //per-frame (sum of right foot z values / sum of all z values)
+                //y: forcesHistory.map(point => (point.right / point.total) * 100),
+              
+                  //With Respect to Reference Force - sum of all right foot values / reference force
+                y: forcesHistory.map(point => (point.right / referenceForce) * 100),
               
                 mode: 'lines+markers',
                 type: 'scattergl',
@@ -2329,8 +2266,11 @@ class PlaybackManager {
                 
                 // per-frame ((sum of all right foot values + sum of all left foot values) / sum of all z values)
                   //this should be basically a per-frame method of calc the 'total' relative force, 
-                  //and it should always be 100% (I think)                
-                y: forcesHistory.map(point => ((point.right + point.left) / point.total) * 100), 
+                  //and it will always be 100%, and the left and right are mirror images of each other
+                //y: forcesHistory.map(point => ((point.right + point.left) / point.total) * 100),
+                
+                  //With Respect to Reference Force - sum of all z values / reference force
+                y: forcesHistory.map(point => (point.total / referenceForce) * 100),
                 
                 mode: 'lines+markers',
                 type: 'scattergl',
@@ -2782,13 +2722,6 @@ class PressureSensorApp {
             return;
         }
         this.state.isPlayback = false;
-        
-        //window.app.state.isPlayback = false;
-      
-        //console.log("PressureSensorApp.processFrame setting state.isPlayback to false", this.state);
-        
-        //console.log("PressureSensorApp.processFrame window.app.state.isPlayback = " + window.app.state.isPlayback);
-      
       
         const processedData = this.dataProcessor.processFrame(frame);
         if (processedData) {
@@ -2887,19 +2820,6 @@ class PressureSensorApp {
         //this.showCalibrationMessage(`${CONFIG.CALIBRATION.WEIGHT_CALIBRATE_COUNTDOWN} s until Start - Prepare to Be Still`);      
         countdownDisplay.textContent = `${CONFIG.CALIBRATION.WEIGHT_CALIBRATE_COUNTDOWN}s until Start - Prepare to Be Still`
         
-        /*
-        let countdown = CONFIG.CALIBRATION.WEIGHT_CALIBRATE_COUNTDOWN / 1000;
-        this.state.visualization.countdownInterval = setInterval(() => {
-          countdown -= 1;
-          if (countdown > 0) {
-            this.showCalibrationMessage(`${countdown} s until Start - Prepare to Be Still`);
-          } else {
-            clearInterval(this.state.visualization.countdownInterval);
-            this.startWeightDataRecording();
-          }
-        }, 1000);
-        */
-        
         // Start the countdown interval - using same form as in startStanceCalibration
         const countInterval = setInterval(() => {
             timeLeft = Math.max(
@@ -2909,38 +2829,29 @@ class PressureSensorApp {
             countdownDisplay.textContent = `${timeLeft}s until Start - Prepare to Be Still`;
 
             if (timeLeft <= 0) {
-                clearInterval(countInterval);
-              
+                clearInterval(countInterval);              
                 //this.dataProcessor.completeCalibration();
-                this.startWeightDataRecording();
-              
+                this.startWeightDataRecording();              
                 countdownDisplay.textContent = '';
-                button.disabled = false;
+                //button.disabled = false;  //don't undisable the button until after finished with the weight calibration
             }
         }, 100);
         
       }
   
-      startWeightDataRecording() {
+      startWeightDataRecording() {          
+          //if (debug == 4) console.log("PressureSensorApp.startWeightDataRecording entered startWeightDataRecording method");          
           const countdownDisplay = document.getElementById('calibrationMessage');
+          const button = document.getElementById('calibrateWeightBtn');
                   
           //this.showCalibrationMessage(`${CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION} s - Calibrating - Please Remain Still.`);
           countdownDisplay.textContent = `${CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION} s - Calibrating - Please Remain Still.`;
         
-          this.state.calibration.weightCalibrationData = [];
+          //this.state.visualization._weightCalibrationActive = true;
+          this.state.calibration._weightCalibrationActive = true;
           
-          /*
-          let duration = CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION;
-          this.state.visualization.durationInterval = setInterval(() => {
-              duration -= 1;
-              if (duration > 0) {
-                this.showCalibrationMessage(`${duration} s - Calibrating - Please Remain Still.`);
-              } else {
-                clearInterval(this.state.visualization.durationInterval);
-                this.finishWeightCalibration();
-              }
-          }, 1000);
-          */
+          //this.state.calibration.weightCalibrationData = [];
+          this.state.calibration.weightCalibrationData = null;  //'reset' weightCalibrationData
         
           this.state.calibration.weightStartTime = Date.now();
           let timeLeft = CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION;
@@ -2954,25 +2865,16 @@ class PressureSensorApp {
 
               if (timeLeft <= 0) {
                   clearInterval(countInterval);
-                
                   //this.dataProcessor.completeCalibration();
+                  //if (debug == 4) console.log("PressureSensorApp.startWeightDataRecording timeLeft<0. calling this.dataProcessor.finishWeightCalibration");
                   this.dataProcessor.finishWeightCalibration();
                   //this.finishWeightCalibration();
-
-                  countdownDisplay.textContent = '';                  
+                  countdownDisplay.textContent = '';
+                  button.disabled = false;
               }
           }, 100);
-
-          //this.state.visualization._weightCalibrationActive = true;
-          this.state.calibration._weightCalibrationActive = true;
+          
       }
-  
-  
-
-//CONFIG.CALIBRATION.WEIGHT_CALIBRATE_COUNTDOWN
-//CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION
-  
-  
 	
 }  //end of class PressureSensorApp 
 
