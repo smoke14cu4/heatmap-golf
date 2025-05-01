@@ -139,6 +139,49 @@ const Utils = {
                 heel: footReadings.filter(r => r.y <= yMid)
             };
         }
+    },
+    
+    // Utility function for filtering an array of CoP points during playback
+    filterCoPArray(copArray, filterType, emaAlpha, medianWindow) {
+        if (!Array.isArray(copArray) || copArray.length === 0) return [];
+        if (filterType === 'none') {
+            return copArray.map(point => ({ ...point }));
+        }
+        let filtered = [];
+        if (filterType === 'ema') {
+            let last = { ...copArray[0] };
+            filtered.push({ ...last, timestamp: copArray[0].timestamp });
+            for (let i = 1; i < copArray.length; ++i) {
+                last = {
+                    x: emaAlpha * copArray[i].x + (1 - emaAlpha) * last.x,
+                    y: emaAlpha * copArray[i].y + (1 - emaAlpha) * last.y,
+                };
+                filtered.push({ ...last, timestamp: copArray[i].timestamp });
+            }
+        } else if (filterType === 'median') {
+            // Always odd and >= 3
+            const win = Math.max(3, medianWindow | 1);
+            for (let i = 0; i < copArray.length; ++i) {
+                const windowStart = Math.max(0, i - Math.floor(win / 2));
+                const windowEnd = Math.min(copArray.length, i + Math.ceil(win / 2));
+                const winSlice = copArray.slice(windowStart, windowEnd);
+                const xs = winSlice.map(p => p.x);
+                const ys = winSlice.map(p => p.y);
+                const median = arr => {
+                    const sorted = [...arr].sort((a, b) => a - b);
+                    const mid = Math.floor(sorted.length / 2);
+                    return sorted.length % 2 === 1
+                        ? sorted[mid]
+                        : (sorted[mid - 1] + sorted[mid]) / 2;
+                };
+                filtered.push({
+                    x: median(xs),
+                    y: median(ys),
+                    timestamp: copArray[i].timestamp
+                });
+            }
+        }
+        return filtered;
     }
   
 };
@@ -2161,12 +2204,24 @@ class PlaybackManager {
         const startTime = this.state.recording.playbackData[0].timestamp;                
 
         // Build CoP history up to this frame for CoP path drawing (and velocity)
-        const copHistory = this.state.recording.playbackData.slice(0, frameIndex + 1)
+        //const copHistory = this.state.recording.playbackData.slice(0, frameIndex + 1)
+        let copHistory = this.state.recording.playbackData.slice(0, frameIndex + 1)
             .map(f => ({
                 ...f.cop,
                 timestamp: f.timestamp
-            }));        
-        this.state.visualization.copHistory = copHistory;
+            }));
+      
+        //this.state.visualization.copHistory = copHistory;
+      
+        // PATCH: Apply filtering to the playback CoP history using selected settings
+        const { copFilterType, emaAlpha, medianWindow } = this.state.settings;        
+        let filteredCoPHistory = Utils.filterCoPArray(
+            copHistory,
+            copFilterType,
+            emaAlpha,
+            medianWindow
+        );
+        this.state.visualization.copHistory = filteredCoPHistory;
 
         // Build pressure history up to this frame if needed
         const dataHistory = this.state.recording.playbackData.slice(0, frameIndex + 1)
@@ -2186,7 +2241,8 @@ class PlaybackManager {
       // 3. Update heatmap (pass current readings, CoP, and full CoP path for overlay)
         this.state.app.visualizer.updateHeatmap({
             readings: frame.pressure,
-            cop: frame.cop
+            //cop: frame.cop
+            cop: filteredCoPHistory.length > 0 ? filteredCoPHistory[filteredCoPHistory.length - 1] : null
         });
         // Overlay path and dot will use .copHistory
 
@@ -2196,14 +2252,16 @@ class PlaybackManager {
       // 4. Update CoP graph
         this.state.app.visualizer.updateCoPGraph();
       
-      // 5. Update velocity graph
+      // 5. Update velocity graph (from filtered CoP history)
         //this.state.app.visualizer.updateVelocityGraph();
         
-        // Build velocity history for this playback segment
+        // Build velocity history for this playback segment from filtered CoP path
         const velocityHistory = [];
         for (let i = 1; i < copHistory.length; i++) {
-            const prev = copHistory[i - 1];
-            const curr = copHistory[i];
+            //const prev = copHistory[i - 1];
+            //const curr = copHistory[i];
+            const prev = filteredCoPHistory[i - 1];
+            const curr = filteredCoPHistory[i];
             const dt = (curr.timestamp - prev.timestamp) / 1000;
             if (dt === 0) continue;
           
@@ -2222,11 +2280,15 @@ class PlaybackManager {
             });
         }
         // Pad with initial zero velocity
-        if (copHistory.length)
+        //if (copHistory.length)
+        if (filteredCoPHistory.length)
             velocityHistory.unshift({
-                timestamp: copHistory[0].timestamp,
-                x: copHistory[0].x,
-                y: copHistory[0].y,
+                //timestamp: copHistory[0].timestamp,
+                //x: copHistory[0].x,
+                //y: copHistory[0].y,
+                timestamp: filteredCoPHistory[0].timestamp,
+                x: filteredCoPHistory[0].x,
+                y: filteredCoPHistory[0].y,
                 vx: 0,
                 vy: 0
             });
@@ -2278,7 +2340,7 @@ class PlaybackManager {
 
         Plotly.react('velocity-graph', velocityTraces, velocityLayout);
 
-      // 6. Update force graph
+      // 6. Update force graph as before
         //this.state.app.visualizer.updateForceGraph();
         
         //const xMid = this.state.latestMidpoints.xMid;  //retrieves the latest xMid x midpoint calculated        
@@ -2389,13 +2451,14 @@ class PlaybackManager {
         );
         forceLayout.xaxis.range = [0, totalDuration];
 
-        Plotly.react('force-graph', forceTraces, forceLayout);      
+        Plotly.react('force-graph', forceTraces, forceLayout);
       
-
-      // 7. Update pressure distribution (now with heel/toe splits)
+      
+        // 7. Update pressure distribution (heel/toe splits)    
         this.state.app.visualizer.updatePressureDistributionLive(
             frame.pressure,
-            frame.cop,
+            //frame.cop,
+            filteredCoPHistory.length > 0 ? filteredCoPHistory[filteredCoPHistory.length - 1] : null,
             this.state.settings,
             this.state.app.dataProcessor // for value function and calibration info
         );
@@ -2403,7 +2466,8 @@ class PlaybackManager {
         // 8. Update raw data panel
         this.state.app.visualizer.updateRawDataLive(
             frame.pressure,
-            frame.cop,
+            //frame.cop,
+            filteredCoPHistory.length > 0 ? filteredCoPHistory[filteredCoPHistory.length - 1] : null,
             frame.timestamp,
             this.state.settings
         );
@@ -2917,10 +2981,21 @@ class PressureSensorApp {
             case 'clearTime':
                 // No direct visualization update, but could reset timeout if needed
                 break;
+            
+            // PATCH: If filter settings are changed during playback, update playback visuals
+            case 'copFilterType':
+            case 'emaAlpha':
+            case 'medianWindow':
+                if (this.state.isPlayback && this.playbackManager && typeof this.playbackManager.currentFrameIndex === 'number') {
+                    this.playbackManager.showFrame(this.playbackManager.currentFrameIndex);
+                }
+                break;
+            
             default:
                 // For any other settings, optionally update heatmap
                 break;
         }
+        
     }
     
     processFrame(frame) {
