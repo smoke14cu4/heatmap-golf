@@ -8,12 +8,14 @@
 
 //let useLinearFit = true;  //set to true to use linear fit for weight calcs  //set to false to use power fit
 
-var useLinearFit = true;  //set to true to use linear fit for weight calcs  //set to false to use power fitforceHistory
+//var useLinearFit = true;  //set to true to use linear fit for weight calcs  //set to false to use power fitforceHistory
 //var useLinearFit = false;  //set to true to use linear fit for weight calcs  //set to false to use power fitforceHistory
 
 //0 to disable  //2 is for useLinearFit debugging  //3 is for midpoint calculations display
-//4 is for staticForceReference stuff
-var debug = 0;  
+//4 is for staticForceReference stuff  //5 is for CoP Stats speeds display
+var debug = 5;
+
+var smoothVelOnly = 0;  //set to 1 to smooth the velocity data only
 
 // Configuration
 const CONFIG = {
@@ -68,7 +70,11 @@ const CONFIG = {
         stopTriggerThreshold: 0.3,  // inches - minimum movement to stop recording
         playbackSpeed: 1.0,
         useFixedDurationStop: true,
-        useMovementThresholdStop: false
+        useMovementThresholdStop: false,
+        useLinearFit: true,
+        copFilterType: 'ema',
+        emaAlpha: 0.4,       // alpha: smoothing factor, smaller emaAlpha = more smoothing, larger = less smoothing... more influecne of most recent data
+        medianWindow: 5
     }
 };
 
@@ -194,7 +200,12 @@ class Logger {
 class AppState {
   
     constructor() {
-        this.settings = { ...CONFIG.DEFAULTS };
+        this.settings = {
+            ...CONFIG.DEFAULTS,            
+            copFilterType: 'ema',   // 'ema' | 'median' | 'none'
+            emaAlpha: 0.4,
+            medianWindow: 5            
+        };
         this.bluetooth = {
             device: null,
             characteristic: null,
@@ -234,6 +245,9 @@ class AppState {
         this.dataBuffer = '';
         this.clearTimeout = null;
         this.isPlayback = false; 
+        // In AppState constructor (add a new field for previous smoothed cop)
+        this.smoothedCop = null;
+        this._medianCopBuffer = [];
     }
     
     updateSetting(key, value) {
@@ -270,19 +284,26 @@ class DataProcessor {
             //if (readings.length > 0) {
             if (readings && readings.length > 0) {
                 const timestamp = Date.now();
-              
+
                 // Update histories
                 this.updateDataHistory(readings, timestamp);                
-              
+
                 if (cop) {
-                    this.updateCopHistory(cop, timestamp);                    
-                  
+
+                    /*
+                    this.updateCopHistory(cop, timestamp);
                     // Calculate velocities
                     const velocities = this.calculateVelocities(cop, timestamp);
                     //Logger.log(CONFIG.DEBUG.BASIC, 'DataProcessor', 'Calculated velocities:', velocities);
-                  
-                }
+                    */
 
+                    // Use selected smoothing filter
+                    const copSmoothed = this.smoothCop(cop);
+                    this.updateCopHistory(copSmoothed, timestamp);
+                    const velocities = this.calculateVelocities(copSmoothed, timestamp);
+
+                }
+                
                 // Process calibration data if needed
                 if (this.state.calibration.isCalibrating) {
                     this.processCalibrationData(readings);
@@ -623,6 +644,59 @@ class DataProcessor {
         
     }
     
+    
+    // Unified smoothing interface
+    smoothCop(cop) {
+        const { copFilterType, emaAlpha, medianWindow } = this.state.settings;
+        switch (copFilterType) {
+            case 'ema':
+                return this._emaSmoothCop(cop, emaAlpha);
+            case 'median':
+                return this._medianSmoothCop(cop, medianWindow);
+            case 'none':
+            default:
+                return { ...cop };
+        }
+    }
+    
+    
+    // EMA filter
+    _emaSmoothCop(cop, alpha = 0.4) {
+        if (!this.state.smoothedCop) {
+            this.state.smoothedCop = { ...cop };
+            return { ...cop };
+        }
+        this.state.smoothedCop.x = alpha * cop.x + (1 - alpha) * this.state.smoothedCop.x;
+        this.state.smoothedCop.y = alpha * cop.y + (1 - alpha) * this.state.smoothedCop.y;
+        return { ...this.state.smoothedCop };
+    }
+
+    // Median filter
+    _medianSmoothCop(cop, windowSize = 5) {
+        // Only odd window sizes
+        windowSize = Math.max(3, windowSize | 1); // enforce odd and >=3
+        this.state._medianCopBuffer = this.state._medianCopBuffer || [];
+        this.state._medianCopBuffer.push({ ...cop });
+        if (this.state._medianCopBuffer.length > windowSize) {
+            this.state._medianCopBuffer.shift();
+        }
+        // Median for x, y separately
+        const xs = this.state._medianCopBuffer.map(p => p.x).slice(-windowSize);
+        const ys = this.state._medianCopBuffer.map(p => p.y).slice(-windowSize);
+        const median = arr => {
+            const sorted = [...arr].sort((a, b) => a - b);
+            const mid = Math.floor(sorted.length / 2);
+            return sorted.length % 2 === 1
+                ? sorted[mid]
+                : (sorted[mid - 1] + sorted[mid]) / 2;
+        };
+        return {
+            x: median(xs),
+            y: median(ys)
+        };
+    }
+    
+    
     calculateVelocities(cop, timestamp) {
         const velocityHistory = this.state.visualization.velocityHistory;
         
@@ -649,13 +723,33 @@ class DataProcessor {
         const vx = dx / dt;
         const vy = dy / dt;
         
-        velocityHistory.push({
-            timestamp,
-            x: cop.x,
-            y: cop.y,
-            vx,
-            vy
-        });
+        if (smoothVelOnly == 1) {
+            //Smoothing Velocity data only (instead of smoothing the CoP data to get both smoothed CoP and smoothed Velocity)
+            let smoothedVx = vx, smoothedVy = vy;
+            if (this.state.visualization.velocityHistory.length > 0) {
+                const prev = this.state.visualization.velocityHistory[this.state.visualization.velocityHistory.length - 1];
+                // Apply EMA with e.g., beta = 0.5
+                smoothedVx = 0.5 * vx + 0.5 * prev.vx;
+                smoothedVy = 0.5 * vy + 0.5 * prev.vy;
+            }
+            velocityHistory.push({
+                timestamp,
+                x: cop.x,
+                y: cop.y,
+                vx: smoothedVx,
+                vy: smoothedVy
+            });
+        }
+        else {            
+            velocityHistory.push({
+                timestamp,
+                x: cop.x,
+                y: cop.y,
+                vx,
+                vy
+            });        
+        }
+        
         
         // Trim velocity history
         if (velocityHistory.length > this.state.settings.copHistoryLength) {
@@ -669,7 +763,7 @@ class DataProcessor {
     calculateForces(readings) {
         const { left: leftFoot, right: rightFoot } = this.getLeftRight(readings);
         let totalPressure, leftPressure, rightPressure;
-        if (useLinearFit) {
+        if (this.state.settings.useLinearFit) {
             totalPressure = readings.reduce((sum, r) => sum + r.value, 0);
             leftPressure = leftFoot.reduce((sum, r) => sum + r.value, 0);
             rightPressure = rightFoot.reduce((sum, r) => sum + r.value, 0);
@@ -847,7 +941,8 @@ class Visualizer {
             'cop-graph',
             [],
             this.getOverlayLayout(
-                'Center of Pressure (CoP) Graph',
+                //'Center of Pressure (CoP) Graph',
+                '        Center of Pressure (CoP) Graph (Center of Mass axes)',
                 //'X Position (coordinate)',
                 'Lateral (inches)',
                 //'Y Position (coordinate)',
@@ -875,7 +970,7 @@ class Visualizer {
             'force-graph',
             [],
             this.getOverlayLayout(
-                `Vertical Ground Reaction Force ${window.useLinearFit ? '(Linear)' : '(Power Fit)'}`,
+                `Vertical Ground Reaction Force ${this.state.settings.useLinearFit ? '(Linear)' : '(Power Fit)'}`,
                 'Time (s)',
                 'Force (% of static weight)',
                 true
@@ -1249,7 +1344,9 @@ class Visualizer {
             xValues = copHistory.map(point => -(this.getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback).x - xMid) * inchesPerSensorX);
             yValues = copHistory.map(point => (this.getInvertedCoPCoords(point, invertX, invertY, sensorsX, sensorsY, isPlayback).y - avgYMid) * inchesPerSensorY);
             
-            title = 'Center of Pressure (CoP) Graph';
+            //title = 'Center of Pressure (CoP) Graph';
+            //title = 'Center of Pressure (CoP) Graph (in relation to Center of Mass)';
+            title = '        Center of Pressure (CoP) Graph (Center of Mass axes)';
             //xAxisTitle = 'X Position (coordinate)';
             //yAxisTitle = 'Y Position (coordinate)';
             xAxisTitle = 'Lateral (inches)';
@@ -1451,7 +1548,8 @@ class Visualizer {
         
         //using getOverlayLayout to overlay most of graph info including titles and axes labels
         const layout = this.getOverlayLayout(
-            `Vertical Ground Reaction Force ${window.useLinearFit ? '(Linear)' : '(Power Fit)'}`,
+            //`Vertical Ground Reaction Force ${window.useLinearFit ? '(Linear)' : '(Power Fit)'}`,
+            `Vertical Ground Reaction Force ${this.state.settings.useLinearFit ? '(Linear)' : '(Power Fit)'}`,
             'Time (s)',
             'Force (% of static weight)',
             true
@@ -1494,7 +1592,8 @@ class Visualizer {
 
         // Value function
         //const useLinearFit = (typeof window.useLinearFit !== "undefined" ? window.useLinearFit : true);        
-        const useLinearFitFlag = window.useLinearFit;
+        //const useLinearFitFlag = window.useLinearFit;
+        const useLinearFitFlag = this.state.settings.useLinearFit;
         
         //const valueFunc = useLinearFitFlag ? (r) => r.value : (r) => Math.pow(
         //        (r.value / (settings.POWER_FIT_COEFFICIENT || 1390.2)),
@@ -1567,7 +1666,8 @@ class Visualizer {
             'cop-graph',
             [],
             this.getOverlayLayout(
-                'Center of Pressure (CoP) Graph',
+                //'Center of Pressure (CoP) Graph',
+                '        Center of Pressure (CoP) Graph (Center of Mass axes)',
                 'X Position (coordinate)',
                 'Y Position (coordinate)',
                 false // no legend
@@ -1591,7 +1691,7 @@ class Visualizer {
             'force-graph',
             [],
             this.getOverlayLayout(
-                `Vertical Ground Reaction Force ${window.useLinearFit ? '(Linear)' : '(Power Fit)'}`,
+                `Vertical Ground Reaction Force ${this.state.settings.useLinearFit ? '(Linear)' : '(Power Fit)'}`,
                 'Time (s)',
                 'Force (% of static weight)',
                 true
@@ -2206,7 +2306,7 @@ class PlaybackManager {
                                 
                 let total, left, right;
               
-                if (useLinearFit) {
+                if (this.state.settings.useLinearFit) {
                     total = readings.reduce((sum, r) => sum + r.value, 0);
                     left = leftFoot.reduce((sum, r) => sum + r.value, 0);
                     right = rightFoot.reduce((sum, r) => sum + r.value, 0);
@@ -2281,7 +2381,8 @@ class PlaybackManager {
         ];
 
         const forceLayout = this.state.app.visualizer.getOverlayLayout(
-            `Vertical Ground Reaction Force ${window.useLinearFit ? '(Linear)' : '(Power Fit)'}`,
+            //`Vertical Ground Reaction Force ${window.useLinearFit ? '(Linear)' : '(Power Fit)'}`,
+            `Vertical Ground Reaction Force ${this.state.settings.useLinearFit ? '(Linear)' : '(Power Fit)'}`,
             'Time (s)',
             'Force (% of static weight)',
             true
@@ -2320,26 +2421,67 @@ class PlaybackManager {
             // Clear
             [
                 'pathDistance', 'avgSpeed', 'maxSpeed',
-                'totalTime', 'xDistance', 'yDistance'
+                'totalTime', 'xDistance', 'yDistance',
+                'maxLateralVel', 'avgLateralVel',
+                'maxHeelToeVel', 'avgHeelToeVel'
             ].forEach(id => document.getElementById(id).textContent = '0.00');
             return;
         }
 
         // Compute path length, avg/max speed, etc
         let pathLen = 0, maxSpeed = 0, xDist = 0, yDist = 0, totalTime = 0, speeds = [];
+        let lateralPathLen = 0;
+        let heelToePathLen = 0;    
     
         let xMin = Infinity, xMax = -Infinity;
         let yMin = Infinity, yMax = -Infinity;
 
         const inchesPerSensorX = this.state.settings.matWidth / this.state.settings.sensorsX;
         const inchesPerSensorY = this.state.settings.matHeight / this.state.settings.sensorsY;
-
+        
+        
+        // --- Build velocity history as in velocity graph ---
+        const velocityHistory = [];
         for (let i = 1; i < copHistory.length; ++i) {
-            const a = copHistory[i - 1], b = copHistory[i];
+            const prev = copHistory[i - 1];
+            const curr = copHistory[i];
+            const dt = (curr.timestamp - prev.timestamp) / 1000;
+            if (dt === 0) continue;
+            const dx = (curr.x - prev.x) * inchesPerSensorX;
+            const dy = (curr.y - prev.y) * inchesPerSensorY;
+            velocityHistory.push({
+                vx: dx / dt,
+                vy: dy / dt
+            });
+        }
+        
+        totalTime = (copHistory[copHistory.length - 1].timestamp - copHistory[0].timestamp) / 1000;
+
+        // Lateral: -vx (as in the velocity graph)
+        // Heel-Toe: vy
+
+        const lateralVels = velocityHistory.map(v => -v.vx);
+        const heelToeVels = velocityHistory.map(v => v.vy);
+
+        // Max of abs
+        const maxLateralVel = lateralVels.length
+            ? Math.max(...lateralVels.map(Math.abs))
+            : 0;
+        const maxHeelToeVel = heelToeVels.length
+            ? Math.max(...heelToeVels.map(Math.abs))
+            : 0;
+
+        
+        // --- Existing path length and bounding box code unchanged ---
+        for (let i = 1; i < copHistory.length; ++i) {
+            const a = copHistory[i - 1];
+            const b = copHistory[i];
             const dx = (b.x - a.x) * inchesPerSensorX;
             const dy = (b.y - a.y) * inchesPerSensorY;
             const dt = (b.timestamp - a.timestamp) / 1000;
             pathLen += Math.sqrt(dx * dx + dy * dy);
+            lateralPathLen += Math.abs(dx);
+            heelToePathLen += Math.abs(dy);
             if (dt > 0) {
                 const speed = Math.sqrt(dx * dx + dy * dy) / dt;
                 maxSpeed = Math.max(maxSpeed, speed);
@@ -2355,18 +2497,33 @@ class PlaybackManager {
         }
         
         Logger.updateConnectionInfo(`Recorded History Length = ${copHistory.length} frames.`);
+        
+
+        /*
+        // Avg of abs - sum of lateralVels / number of readings -> this is just the average reading of the veloctiy array...         
+        const avgLateralVel = lateralVels.length
+            ? lateralVels.reduce((sum, v) => sum + Math.abs(v), 0) / lateralVels.length
+            : 0;
+        const avgHeelToeVel = heelToeVels.length
+            ? heelToeVels.reduce((sum, v) => sum + Math.abs(v), 0) / heelToeVels.length
+            : 0;
+        */
+      
+        
+          //could instead do total lateral pathlength / total time and total heelToe pathlength / total time
+        const avgLateralVel = lateralVels.length ? lateralPathLen / totalTime : 0;
+        const avgHeelToeVel = heelToeVels.length ? heelToePathLen / totalTime : 0;      
+        
       
         // X dist. (lateral distance) and Y dist (heel-toe distance)
           //the two below show the dist of the finish point from the start point... not quite what I want
         xDist = Math.abs((copHistory[copHistory.length - 1].x - copHistory[0].x) * inchesPerSensorX);
-        yDist = Math.abs((copHistory[copHistory.length - 1].y - copHistory[0].y) * inchesPerSensorY);
-        
+        yDist = Math.abs((copHistory[copHistory.length - 1].y - copHistory[0].y) * inchesPerSensorY);        
         //I want the x and y bounding box for the CoP data
         
-        totalTime = (copHistory[copHistory.length - 1].timestamp - copHistory[0].timestamp) / 1000;
-        
-        
         const avgSpeed = speeds.length ? (speeds.reduce((a, b) => a + b, 0) / speeds.length) : 0;
+      
+        if (debug == 5) console.log("updateCoPStatsDisplay calculated speeds: ", speeds);
 
         document.getElementById('pathDistance').textContent = pathLen.toFixed(2);
         document.getElementById('avgSpeed').textContent = avgSpeed.toFixed(2);
@@ -2377,7 +2534,18 @@ class PlaybackManager {
         //document.getElementById('xDistance').textContent = xDist.toFixed(2);
         document.getElementById('xDistance').textContent = (xMax - xMin).toFixed(2);
         //document.getElementById('yDistance').textContent = yDist.toFixed(2);
-        document.getElementById('yDistance').textContent = (yMax - yMin).toFixed(2);
+        document.getElementById('yDistance').textContent = (yMax - yMin).toFixed(2);        
+        
+        // PATCH: Show new velocity stats
+        document.getElementById('lateralDistance').textContent = lateralPathLen.toFixed(2);
+        document.getElementById('heelToeDistance').textContent = heelToePathLen.toFixed(2);
+        document.getElementById('maxLateralVel').textContent = maxLateralVel.toFixed(2);        
+        document.getElementById('maxHeelToeVel').textContent = maxHeelToeVel.toFixed(2);
+          //avgLateralVel = lateralDistance / total time
+        document.getElementById('avgLateralVel').textContent = avgLateralVel.toFixed(2);
+          //avgHeelToeVel = heelToeDistance / total time
+        document.getElementById('avgHeelToeVel').textContent = avgHeelToeVel.toFixed(2);
+        
     }
 
     togglePlay() {
@@ -2493,6 +2661,8 @@ class PressureSensorApp {
                 document.getElementById('deltaMode').checked = true;
             }
             
+            document.getElementById('useLinearFit').checked = this.state.settings.useLinearFit;
+            
             this.setupSettingsPanel();
             this.checkVisualizationStatus();
             //Logger.log(CONFIG.DEBUG.BASIC, 'App', 'Application initialized successfully');
@@ -2534,6 +2704,46 @@ class PressureSensorApp {
         document.getElementById('calibrateWeightBtn').addEventListener('click', () =>
             this.startWeightCalibration()
         );
+        
+        // EMA Alpha slider and input
+        const emaAlphaInput = document.getElementById('emaAlpha');
+        const emaAlphaSlider = document.getElementById('emaAlphaSlider');
+        emaAlphaInput.addEventListener('input', (e) => {
+            emaAlphaSlider.value = e.target.value;
+            this.updateSettingAndVisuals('emaAlpha', parseFloat(e.target.value));
+        });
+        emaAlphaSlider.addEventListener('input', (e) => {
+            emaAlphaInput.value = e.target.value;
+            this.updateSettingAndVisuals('emaAlpha', parseFloat(e.target.value));
+        });
+
+        // Median window slider and input
+        const medianWindowInput = document.getElementById('medianWindow');
+        const medianWindowSlider = document.getElementById('medianWindowSlider');
+        medianWindowInput.addEventListener('input', (e) => {
+            medianWindowSlider.value = e.target.value;
+            this.updateSettingAndVisuals('medianWindow', parseInt(e.target.value));
+        });
+        medianWindowSlider.addEventListener('input', (e) => {
+            medianWindowInput.value = e.target.value;
+            this.updateSettingAndVisuals('medianWindow', parseInt(e.target.value));
+        });
+
+        // Filter type select
+        const copFilterTypeSelect = document.getElementById('copFilterType');
+        copFilterTypeSelect.addEventListener('change', (e) => {
+            this.updateSettingAndVisuals('copFilterType', e.target.value);
+            // Show/hide relevant controls
+            document.getElementById('emaAlphaGroup').style.display =
+                e.target.value === 'ema' ? 'flex' : 'none';
+            document.getElementById('medianWindowGroup').style.display =
+                e.target.value === 'median' ? 'flex' : 'none';
+        });
+        
+        const useLinearFitCheckbox = document.getElementById('useLinearFit');
+        useLinearFitCheckbox.addEventListener('change', (e) => {
+            this.updateSettingAndVisuals('useLinearFit', e.target.checked);
+        });
         
         document.getElementById('readyButton').addEventListener('click', () => 
             this.recordingManager.startCountdown()
@@ -2837,44 +3047,44 @@ class PressureSensorApp {
             }
         }, 100);
         
-      }
+    }
   
-      startWeightDataRecording() {          
-          //if (debug == 4) console.log("PressureSensorApp.startWeightDataRecording entered startWeightDataRecording method");          
-          const countdownDisplay = document.getElementById('calibrationMessage');
-          const button = document.getElementById('calibrateWeightBtn');
-                  
-          //this.showCalibrationMessage(`${CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION} s - Calibrating - Please Remain Still.`);
-          countdownDisplay.textContent = `${CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION} s - Calibrating - Please Remain Still.`;
-        
-          //this.state.visualization._weightCalibrationActive = true;
-          this.state.calibration._weightCalibrationActive = true;
-          
-          //this.state.calibration.weightCalibrationData = [];
-          this.state.calibration.weightCalibrationData = null;  //'reset' weightCalibrationData
-        
-          this.state.calibration.weightStartTime = Date.now();
-          let timeLeft = CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION;
-          // Start the countdown interval - using same form as in startStanceCalibration
-          const countInterval = setInterval(() => {
-              timeLeft = Math.max(
-                  0,
-                  Math.round((CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION - (Date.now() - this.state.calibration.weightStartTime)) / 1000)
-              );
-              countdownDisplay.textContent = `${timeLeft}s - Calibrating - Please Remain Still.`;
+    startWeightDataRecording() {          
+        //if (debug == 4) console.log("PressureSensorApp.startWeightDataRecording entered startWeightDataRecording method");          
+        const countdownDisplay = document.getElementById('calibrationMessage');
+        const button = document.getElementById('calibrateWeightBtn');
 
-              if (timeLeft <= 0) {
-                  clearInterval(countInterval);
-                  //this.dataProcessor.completeCalibration();
-                  //if (debug == 4) console.log("PressureSensorApp.startWeightDataRecording timeLeft<0. calling this.dataProcessor.finishWeightCalibration");
-                  this.dataProcessor.finishWeightCalibration();
-                  //this.finishWeightCalibration();
-                  countdownDisplay.textContent = '';
-                  button.disabled = false;
-              }
-          }, 100);
-          
-      }
+        //this.showCalibrationMessage(`${CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION} s - Calibrating - Please Remain Still.`);
+        countdownDisplay.textContent = `${CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION} s - Calibrating - Please Remain Still.`;
+
+        //this.state.visualization._weightCalibrationActive = true;
+        this.state.calibration._weightCalibrationActive = true;
+
+        //this.state.calibration.weightCalibrationData = [];
+        this.state.calibration.weightCalibrationData = null;  //'reset' weightCalibrationData
+
+        this.state.calibration.weightStartTime = Date.now();
+        let timeLeft = CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION;
+        // Start the countdown interval - using same form as in startStanceCalibration
+        const countInterval = setInterval(() => {
+            timeLeft = Math.max(
+                0,
+                Math.round((CONFIG.CALIBRATION.WEIGHT_CALIBRATE_DURATION - (Date.now() - this.state.calibration.weightStartTime)) / 1000)
+            );
+            countdownDisplay.textContent = `${timeLeft}s - Calibrating - Please Remain Still.`;
+
+            if (timeLeft <= 0) {
+                clearInterval(countInterval);
+                //this.dataProcessor.completeCalibration();
+                //if (debug == 4) console.log("PressureSensorApp.startWeightDataRecording timeLeft<0. calling this.dataProcessor.finishWeightCalibration");
+                this.dataProcessor.finishWeightCalibration();
+                //this.finishWeightCalibration();
+                countdownDisplay.textContent = '';
+                button.disabled = false;
+            }
+        }, 100);
+
+    }
 	
 }  //end of class PressureSensorApp 
 
