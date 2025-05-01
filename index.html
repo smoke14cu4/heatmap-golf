@@ -140,6 +140,38 @@
                                min="0.1" max="5" step="0.1" 
                                value="0.3">
                     </div>
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="useLinearFit" checked>
+                            Use Linear Force Mapping?
+                        </label>
+                    </div>
+                    
+                    
+                    <!-- Add these controls in the General Settings section inside #settingsSection, after the "CoP History Length" control group. -->
+
+                    <div class="control-group">
+                        <label>CoP Velocity Smoothing:
+                            <select id="copFilterType">
+                                <option value="ema">EMA (Exponential Moving Avg.)</option>
+                                <option value="median">Median Filter</option>
+                                <option value="none">None</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="control-group" id="emaAlphaGroup">
+                        <label>EMA Alpha:
+                            <input type="number" id="emaAlpha" min="0.05" max="1.0" step="0.01" value="0.4">
+                        </label>
+                        <input type="range" id="emaAlphaSlider" min="0.05" max="1.0" step="0.01" value="0.4">
+                    </div>
+                    <div class="control-group" id="medianWindowGroup" style="display:none;">
+                        <label>Median Window Size:
+                            <input type="number" id="medianWindow" min="3" max="11" step="2" value="5">
+                        </label>
+                        <input type="range" id="medianWindowSlider" min="3" max="11" step="2" value="5">
+                    </div>
+                    
                 </div>
             </div>
 
@@ -150,7 +182,8 @@
                         <input type="checkbox" id="matSettingsToggle">
                         <span class="slider"></span>
                     </label>
-                    <span>Mat Settings</span>
+                    <!-- <span>Mat Settings</span> -->
+                    <span>Mat Size and Orientation Settings</span>
                 </div>
                 <div id="matSettingsSection" class="settings-content">
                     <div class="mat-control">
@@ -210,7 +243,8 @@
                     <div class="cop-and-data">
                         <div class="cop-mode-toggle">
                             <input type="radio" id="normalMode" name="copMode" value="normal" checked>
-                            <label for="normalMode">Normal</label>
+                            <!-- <label for="normalMode">Normal</label> -->
+                            <label for="normalMode">CoM Axes</label>
                             <input type="radio" id="deltaMode" name="copMode" value="delta">
                             <label for="deltaMode">Delta</label>
                         </div>
@@ -226,6 +260,28 @@
                 <!--  Moved Calibrate stance button and weight dist. display to bottom of left column -->
                 
                 <!-- Calibrate Stance Button and Stance Calibration Method Selector -->
+                <!--
+                <div class="weight-distribution-controls">
+                    <div class="method-selector">
+                        <input type="radio" id="perFrameMethod" name="weightDistMethod" value="perFrame" checked>
+                        <label for="perFrameMethod">Per-Frame Method</label>
+                        <input type="radio" id="calibratedMethod" name="weightDistMethod" value="calibrated">
+                        <label for="calibratedMethod">Stance-Calibrated Method</label>
+                    </div>                    
+                    <button id="calibrateStanceButton" class="calibrate-button primary-button">
+                        Calibrate Stance Position - 8s Recording
+                    </button>
+                    <div id="calibrationCountdown" class="countdown"></div>                    
+                    <button id="calibrateWeightBtn" class="calibrate-button primary-button">
+                        Calibrate Weight - 3s Countdown
+                    </button>
+                    <div id="calibrationMessage" class="countdown"></div>                    
+                </div>
+                -->
+                
+                
+                <!--  all 3 buttons on same line -->
+                <!--
                 <div class="weight-distribution-controls">
                     <div class="method-selector">
                         <input type="radio" id="perFrameMethod" name="weightDistMethod" value="perFrame" checked>
@@ -233,17 +289,54 @@
                         <input type="radio" id="calibratedMethod" name="weightDistMethod" value="calibrated">
                         <label for="calibratedMethod">Stance-Calibrated Method</label>
                     </div>
-                    <!--<button id="calibrateStanceButton" class="calibrate-button">-->
-                    <button id="calibrateStanceButton" class="calibrate-button primary-button">
-                        Calibrate Stance Position - 8s Recording
-                    </button>
-                    <div id="calibrationCountdown" class="countdown"></div>
-                    <!-- weight calibration button   -->
-                    <button id="calibrateWeightBtn" class="calibrate-button primary-button">
-                        Calibrate Weight - 3s Countdown
-                    </button>
-                    <div id="calibrationMessage" class="countdown"></div>                    
+                    <div class="triple-button-row">
+                        <div class="left-btn">
+                            <button id="calibrateWeightBtn" class="calibrate-button primary-button">
+                                Calibrate Weight - 3s Countdown
+                            </button>
+                        </div>
+                        <div class="center-btn">
+                            <button id="calibrateStanceButton" class="calibrate-button primary-button">
+                                Calibrate Stance Position - 8s Recording
+                            </button>
+                            <div id="calibrationCountdown" class="countdown"></div>
+                            <div id="calibrationMessage" class="countdown"></div>
+                        </div>
+                        <div class="right-btn">
+                            <button id="readyButton" class="ready-button primary-button">
+                                Ready to Start Swing - 5s Countdown
+                            </button>
+                            <div id="countdown" class="countdown"></div>
+                        </div>
+                    </div>
                 </div>
+                -->
+                
+                
+                <!-- two buttons on same line -->
+                <div class="weight-distribution-controls">
+                    <div class="method-selector">
+                        <input type="radio" id="perFrameMethod" name="weightDistMethod" value="perFrame" checked>
+                        <label for="perFrameMethod">Per-Frame Method</label>
+                        <input type="radio" id="calibratedMethod" name="weightDistMethod" value="calibrated">
+                        <label for="calibratedMethod">Stance-Calibrated Method</label>
+                    </div>
+                    <div class="dual-button-row">
+                        <div class="btn-col left">
+                            <button id="calibrateWeightBtn" class="calibrate-button primary-button">
+                                Calibrate Weight - 3s Countdown
+                            </button>
+                            <div id="calibrationMessage" class="countdown"></div>
+                        </div>
+                        <div class="btn-col center">
+                            <button id="calibrateStanceButton" class="calibrate-button primary-button">
+                                Calibrate Stance Position - 8s Recording
+                            </button>
+                            <div id="calibrationCountdown" class="countdown"></div>
+                        </div>
+                    </div>
+                </div>
+                
 
                 <!-- Weight Distribution Display -->
                 <div id="pressure-distribution" class="info-panel">
@@ -306,14 +399,16 @@
                     </div>
                 </div>
 
-                <!-- CoP Controls -->
+                <!-- CoP Controls -->                
                 <div class="cop-controls">
-                    <!--<button id="readyButton" class="ready-button">-->
+                    
                     <button id="readyButton" class="ready-button primary-button">
                         Ready to Start Swing - 5s Countdown
                     </button>
                     <div id="countdown" class="countdown"></div>
+                    
                 </div>
+                
 
                 <!-- CoP Stats -->
                 <div id="cop-stats" class="info-panel">
@@ -346,6 +441,32 @@
                             <label>Total Time:</label>
                             <span id="totalTime">0.00</span> s
                         </div>
+                        
+                        <div class="stat-item">
+                            <label>Lateral Path Len:</label>
+                            <span id="lateralDistance">0.00</span> in/s
+                        </div>
+                        <div class="stat-item">
+                            <label>Heel-Toe Path Len:</label>
+                            <span id="heelToeDistance">0.00</span> in/s
+                        </div>
+                        <div class="stat-item">
+                            <label>Max Lateral Vel:</label>
+                            <span id="maxLateralVel">0.00</span> in/s
+                        </div>
+                        <div class="stat-item">
+                            <label>Avg Lateral Vel:</label>
+                            <span id="avgLateralVel">0.00</span> in/s
+                        </div>
+                        <div class="stat-item">
+                            <label>Max Heel-Toe Vel:</label>
+                            <span id="maxHeelToeVel">0.00</span> in/s
+                        </div>
+                        <div class="stat-item">
+                            <label>Avg Heel-Toe Vel:</label>
+                            <span id="avgHeelToeVel">0.00</span> in/s
+                        </div>
+                        
                         
                     </div>
                 </div>                
