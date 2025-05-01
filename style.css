@@ -68,6 +68,7 @@ header {
     flex: 1 1 0%;
 }
 
+
 /* Columns */
 .left-column,
 .right-column {
@@ -83,15 +84,22 @@ header {
     gap: var(--spacing-md);
 }
 
+
 /* PATCH: Prevent right-column from scrolling separately, so only whole-page scrolls */
 /* Remove or adjust overflow-y: auto; from .right-column and related wrappers */
 
+
 .right-column {
-    flex: 3 1 0%;
+    /*flex: 3 1 0%;*/
+    flex: 2 1 0%;
     min-width: 500px;
-    max-width: 900px;
+    /*max-width: 900px;*/
+    max-width: 1200px;
     gap: var(--spacing-md);
 }
+
+
+
 
 /* Buttons and Controls */
 .button-group {
@@ -249,6 +257,10 @@ input:checked + .slider:before {
     flex: 1;
     margin: 0;
 }
+  
+#emaAlphaGroup, #medianWindowGroup {
+    margin-bottom: var(--spacing-sm);
+}
 
 /* Visualization Container */
 .visualization-container {
@@ -259,6 +271,7 @@ input:checked + .slider:before {
     flex: 1 1 0%;
     min-height: 0;
 }
+
 
 .heatmap-wrapper {
     width: 100%;
@@ -372,6 +385,11 @@ input:checked + .slider:before {
     overflow: hidden;
     flex-shrink: 0;
     width: 100%;
+    /* PATCH: Make the graphs in right-column fill available width */
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    /* rest unchanged */
 }
 
 /* Overlayed Plotly Graphs: Remove margin/padding for max plot area */
@@ -387,6 +405,7 @@ input:checked + .slider:before {
     /* Transparent backgrounds for overlayed titles/legend */
     background: transparent !important;
 }
+
 
 @media screen and (max-width: 900px) {
     .main-content-wrapper {
@@ -428,6 +447,93 @@ input:checked + .slider:before {
     font-size: var(--font-size-small);
     line-height: 1.5;
 }
+
+
+/* vvv For the 3 buttons all on the same line vvv */
+/*
+.triple-button-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    width: 100%;
+}
+
+.triple-button-row .left-btn {
+    flex: 1 1 0;
+    display: flex;
+    justify-content: flex-start;
+    align-items: flex-start;
+}
+.triple-button-row .center-btn {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+}
+.triple-button-row .right-btn {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: flex-start;
+}
+
+.triple-button-row button {
+    min-width: 190px;
+}
+
+.triple-button-row .countdown {
+    margin-top: 3px;
+    font-size: 18px;
+    text-align: center;
+}
+*/
+/* ^^^ For the 3 buttons all on the same line ^^^ */
+
+
+
+/* vvv For the 2 buttons on the same line vvv */
+
+.dual-button-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 14px;
+    margin: 10px 0 10px 0;
+    width: 100%;
+}
+
+.dual-button-row .btn-col {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+}
+
+.dual-button-row .btn-col.left {
+    align-items: flex-start;
+}
+
+.dual-button-row .btn-col.center {
+    align-items: center;
+}
+
+.dual-button-row button {
+    min-width: 190px;
+}
+
+.dual-button-row .countdown {
+    margin-top: 3px;
+    font-size: 18px;
+    min-height: 1.5em;
+    width: 100%;
+    text-align: inherit;
+}
+/* ^^^ For the 2 buttons all on the same line ^^^ */
+  
 
 /* Left vs Right and toe vs heel foot pressure distribution */
 .pressure-title {
