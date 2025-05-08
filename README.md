@@ -2,10 +2,10 @@
 
 A static web application for **Bluetooth-based golf pressure mat visualization, swing recording, and Center of Pressure (CoP) analysis**. This app allows users to connect to a compatible BLE-enabled pressure sensor mat, visualize real-time pressure data, analyze swings, and interactively playback and review Center of Pressure metrics.
 
-Version 1 hosted at:
+Older version with just heatmap and CoP vizualization, recording, and playback:
 https://heatmap-golf.glitch.me/  
 
-Version 2 hosted at:
+Latest version (up to date with this repo) with heatmap, CoP graph with center of mass axes, force graph, velocity graph, more calibration options, and more data filtering options, along with swing recording, and playback:
 https://heatmap-golf-v2.glitch.me/
 
 ---
