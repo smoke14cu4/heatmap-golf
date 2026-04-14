@@ -1,8 +1,8 @@
 /**
  * Pressure Sensor Visualization Application
- * Version: 2.0.0
+ * Version: 3.0.0
  * Author: smoke14cu4
- * Last Updated: 04-30-2025 
+ * Last Updated: 04-14-2026 
  */
 
 
@@ -72,6 +72,7 @@ const CONFIG = {
         useFixedDurationStop: true,
         useMovementThresholdStop: false,
         useLinearFit: true,
+        showTotalForce: true,
         copFilterType: 'ema',
         emaAlpha: 0.4,       // alpha: smoothing factor, smaller emaAlpha = more smoothing, larger = less smoothing... more influecne of most recent data
         medianWindow: 5
@@ -912,8 +913,9 @@ class Visualizer {
     getOverlayLayout(titleText, xTitle, yTitle, showLegend = true) {
         return {
             title: '', // Remove default
-            xaxis: { title: '', automargin: false, showgrid: true, zeroline: true },
-            yaxis: { title: '', automargin: false, showgrid: true, zeroline: true },
+            xaxis: { title: '', automargin: false, showgrid: true, zeroline: true, gridcolor: 'rgba(255,255,255,0.1)', zerolinecolor: 'rgba(255,255,255,0.2)', tickfont: { color: '#8b949e' } },
+            yaxis: { title: '', automargin: false, showgrid: true, zeroline: true, gridcolor: 'rgba(255,255,255,0.1)', zerolinecolor: 'rgba(255,255,255,0.2)', tickfont: { color: '#8b949e' } },
+            font: { color: '#e6edf3', family: 'Inter' },
             annotations: [
                 {
                     text: titleText,
@@ -924,7 +926,7 @@ class Visualizer {
                     yref: 'paper',
                     showarrow: false,
                     //font: { size: 22 },
-                    font: { size: 18 },
+                    font: { size: 18, color: '#00e5ff' },
                     xanchor: 'center',
                     yanchor: 'bottom'
                 },
@@ -937,7 +939,7 @@ class Visualizer {
                     yref: 'paper',
                     showarrow: false,
                     //font: { size: 16 },
-                    font: { size: 12 },
+                    font: { size: 12, color: '#8b949e' },
                     xanchor: 'center',
                     yanchor: 'top'
                 },
@@ -950,7 +952,7 @@ class Visualizer {
                     yref: 'paper',
                     showarrow: false,
                     //font: { size: 16 },
-                    font: { size: 12 },
+                    font: { size: 12, color: '#8b949e' },
                     textangle: -90,
                     xanchor: 'center',
                     yanchor: 'middle'
@@ -963,10 +965,10 @@ class Visualizer {
                 y: 0.9,
                 xanchor: 'center',
                 yanchor: 'bottom',
-                bgcolor: 'rgba(255,255,255,0.7)',
+                bgcolor: 'rgba(26,32,44,0.7)',
                 borderwidth: 0,
                 //font: { size: 13 }
-                font: { size: 9 }
+                font: { size: 10, color: '#e6edf3' }
             } : { visible: false },
             //margin: { l: 18, r: 8, t: 34, b: 18 },
             margin: { l: 36, r: 8, t: 18, b: 18 },  //dec top margin   //increased left margin to let 3 digits display
@@ -1313,7 +1315,7 @@ class Visualizer {
 
         // Compose readings HTML
         let readingsHtml = adjustedReadings.map(r =>
-            `<div>x: ${r.adjustedX}, y: ${r.adjustedY}, pressure: ${r.adjustedPressure}</div>`
+            `<div>x: ${r.adjustedX}, y: ${r.adjustedY}, press: ${r.adjustedPressure}</div>`
         ).join("");
       
         rawData.innerHTML = `            
@@ -1577,7 +1579,7 @@ class Visualizer {
                 line: { color: 'red' },
                 marker: { size: 6, color: 'red' }
             },
-            {
+            ...(this.state.settings.showTotalForce ? [{
                 x: times,
                 y: totalForces,
                 mode: 'lines+markers',
@@ -1586,7 +1588,7 @@ class Visualizer {
                 name: 'Total',
                 line: { color: 'green' },
                 marker: { size: 6, color: 'green' }
-            }
+            }] : [])
         ];
         
         //using getOverlayLayout to overlay most of graph info including titles and axes labels
@@ -1677,7 +1679,9 @@ class Visualizer {
         const rightPercent = total ? ((rightTotal / total) * 100).toFixed(0) : "0";
 
         document.getElementById('front-percentage').textContent = leftPercent;
+        document.getElementById('hm-left-foot').innerHTML = `<div class="hm-label">Left Foot</div><div class="hm-value">${leftPercent}%</div>`;
         document.getElementById('back-percentage').textContent = rightPercent;
+        document.getElementById('hm-right-foot').innerHTML = `<div class="hm-label">Right Foot</div><div class="hm-value">${rightPercent}%</div>`;
 
         // Per-foot toe/heel
         //const leftTH = toeHeelPerc(leftFoot);        
@@ -1686,9 +1690,13 @@ class Visualizer {
         const rightTH = toeHeelPerc(rightFoot, "right");
 
         document.getElementById('front-toe-percentage').textContent = `Toe: ${leftTH.toe}%`;
+        document.getElementById('hm-left-toe').innerHTML = `<div class="hm-label">Toe</div><div class="hm-value">${leftTH.toe}%</div>`;
         document.getElementById('front-heel-percentage').textContent = `Heel: ${leftTH.heel}%`;
+        document.getElementById('hm-left-heel').innerHTML = `<div class="hm-label">Heel</div><div class="hm-value">${leftTH.heel}%</div>`;
         document.getElementById('back-toe-percentage').textContent = `Toe: ${rightTH.toe}%`;
+        document.getElementById('hm-right-toe').innerHTML = `<div class="hm-label">Toe</div><div class="hm-value">${rightTH.toe}%</div>`;
         document.getElementById('back-heel-percentage').textContent = `Heel: ${rightTH.heel}%`;
+        document.getElementById('hm-right-heel').innerHTML = `<div class="hm-label">Heel</div><div class="hm-value">${rightTH.heel}%</div>`;
     }
     
     clearAll() {
@@ -1750,11 +1758,17 @@ class Visualizer {
 
         // Reset pressure distribution display
         document.getElementById('front-toe-percentage').textContent = 'Toe: 0%';
+        document.getElementById('hm-left-toe').innerHTML = '<div class="hm-label">Toe</div><div class="hm-value">0%</div>';
         document.getElementById('front-percentage').textContent = '0';
+        document.getElementById('hm-left-foot').innerHTML = '<div class="hm-label">Left Foot</div><div class="hm-value">0%</div>';
         document.getElementById('front-heel-percentage').textContent = 'Heel: 0%';
+        document.getElementById('hm-left-heel').innerHTML = '<div class="hm-label">Heel</div><div class="hm-value">0%</div>';
         document.getElementById('back-toe-percentage').textContent = 'Toe: 0%';
+        document.getElementById('hm-right-toe').innerHTML = '<div class="hm-label">Toe</div><div class="hm-value">0%</div>';
         document.getElementById('back-percentage').textContent = '0';
+        document.getElementById('hm-right-foot').innerHTML = '<div class="hm-label">Right Foot</div><div class="hm-value">0%</div>';
         document.getElementById('back-heel-percentage').textContent = 'Heel: 0%';
+        document.getElementById('hm-right-heel').innerHTML = '<div class="hm-label">Heel</div><div class="hm-value">0%</div>';
 
         //Logger.log(CONFIG.DEBUG.BASIC, 'Visualizer', 'All visualizations cleared');
       
@@ -2420,7 +2434,7 @@ class PlaybackManager {
                 line: { color: 'red' },
                 marker: { size: 6, color: 'red' }
             },
-            {
+            ...(this.state.settings.showTotalForce ? [{
                 x: forcesHistory.map(point => (point.timestamp - startTime) / 1000),
                 
                 // per-frame (sum of all z values / sum of all z values of first frame)
@@ -2439,7 +2453,7 @@ class PlaybackManager {
                 name: 'Total',
                 line: { color: 'green' },
                 marker: { size: 6, color: 'green' }
-            }
+            }] : [])
         ];
 
         const forceLayout = this.state.app.visualizer.getOverlayLayout(
@@ -2726,6 +2740,7 @@ class PressureSensorApp {
             }
             
             document.getElementById('useLinearFit').checked = this.state.settings.useLinearFit;
+            document.getElementById('showTotalForce').checked = this.state.settings.showTotalForce;
             
             this.setupSettingsPanel();
             this.checkVisualizationStatus();
@@ -2807,6 +2822,10 @@ class PressureSensorApp {
         const useLinearFitCheckbox = document.getElementById('useLinearFit');
         useLinearFitCheckbox.addEventListener('change', (e) => {
             this.updateSettingAndVisuals('useLinearFit', e.target.checked);
+        });
+
+        document.getElementById('showTotalForce').addEventListener('change', (e) => {
+            this.updateSettingAndVisuals('showTotalForce', e.target.checked);
         });
         
         document.getElementById('readyButton').addEventListener('click', () => 
