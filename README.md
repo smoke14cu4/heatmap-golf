@@ -9,7 +9,7 @@ https://heatmap-golf.glitch.me/
 
 Latest version (up to date with this repo) with heatmap, CoP graph with center of mass axes, force graph, velocity graph, more calibration options, and more data filtering options, along with swing recording, and playback:
 
-https://heatmap-golf-v2.glitch.me/
+https://golfmatv3.smoke14cu.workers.dev/
 
 ---
 
