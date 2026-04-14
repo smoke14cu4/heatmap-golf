@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- <title>BLE Pressure Sensor Visualization</title> -->
     <title>Golf Pressure Sensor Visualization</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Analytics -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-VX1N2E6KJN"></script>
@@ -146,6 +150,12 @@
                             Use Linear Force Mapping?
                         </label>
                     </div>
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="showTotalForce" checked>
+                            Show Total Line on Force Graph?
+                        </label>
+                    </div>
                     
                     
                     <!-- Add these controls in the General Settings section inside #settingsSection, after the "CoP History Length" control group. -->
@@ -237,6 +247,15 @@
                     <div id="heatmap-container" class="heatmap-wrapper">
                         <div id="heatmap"></div>
                         <canvas id="heatmap-overlay"></canvas>
+                        
+                        <!-- Overlay Labels -->
+                        <div class="hm-overlay left-toe" id="hm-left-toe"><div class="hm-label">Toe</div><div class="hm-value">0%</div></div>
+                        <div class="hm-overlay left-foot" id="hm-left-foot"><div class="hm-label">Left Foot</div><div class="hm-value">0%</div></div>
+                        <div class="hm-overlay left-heel" id="hm-left-heel"><div class="hm-label">Heel</div><div class="hm-value">0%</div></div>
+                        
+                        <div class="hm-overlay right-toe" id="hm-right-toe"><div class="hm-label">Toe</div><div class="hm-value">0%</div></div>
+                        <div class="hm-overlay right-foot" id="hm-right-foot"><div class="hm-label">Right Foot</div><div class="hm-value">0%</div></div>
+                        <div class="hm-overlay right-heel" id="hm-right-heel"><div class="hm-label">Heel</div><div class="hm-value">0%</div></div>
                     </div>
 
                     <!-- CoP Graph Section -->
